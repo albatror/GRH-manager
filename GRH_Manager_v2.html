@@ -1,0 +1,2232 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GRH Manager</title>
+<!-- SheetJS : lecture des fichiers Excel uniquement -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- JSZip : écriture directe dans le ZIP/XML pour préserver les styles à 100% -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0f1117;--surface:#181c27;--surface2:#1e2336;--surface3:#252c42;
+  --border:#2e3650;--text:#e8ecf5;--text-muted:#7a869c;--text-dim:#4a5570;
+  --accent:#4f8ef7;--accent-soft:rgba(79,142,247,.12);
+  --green:#2ecc7a;--green-soft:rgba(46,204,122,.12);
+  --orange:#f7943a;--orange-soft:rgba(247,148,58,.12);
+  --red:#f74f4f;--red-soft:rgba(247,79,79,.12);
+  --yellow:#f7d14f;--yellow-soft:rgba(247,209,79,.12);
+  --purple:#c07ef7;--purple-soft:rgba(192,126,247,.12);
+  --r:8px;--rl:14px;--font:'DM Sans',sans-serif;--mono:'DM Mono',monospace;
+}
+/* ── THÈME CLAIR ── */
+[data-theme="light"]{
+  --bg:#f0f2f7;--surface:#ffffff;--surface2:#f5f6fa;--surface3:#e8eaf0;
+  --border:#d0d4e0;--text:#1a1e2e;--text-muted:#5a6280;--text-dim:#9aa0b8;
+  --accent:#2563eb;--accent-soft:rgba(37,99,235,.1);
+  --green:#059669;--green-soft:rgba(5,150,105,.1);
+  --orange:#d97706;--orange-soft:rgba(217,119,6,.1);
+  --red:#dc2626;--red-soft:rgba(220,38,38,.1);
+  --yellow:#b45309;--yellow-soft:rgba(180,83,9,.1);
+  --purple:#7c3aed;--purple-soft:rgba(124,58,237,.1);
+}
+/* ── THÈME BLEU PROFESSIONNEL ── */
+[data-theme="blue"]{
+  --bg:#0a1628;--surface:#0f2040;--surface2:#162a52;--surface3:#1d3464;
+  --border:#1e3d6e;--text:#d8e8ff;--text-muted:#7a9acc;--text-dim:#3a5880;
+  --accent:#38bdf8;--accent-soft:rgba(56,189,248,.12);
+  --green:#34d399;--green-soft:rgba(52,211,153,.12);
+  --orange:#fb923c;--orange-soft:rgba(251,146,60,.12);
+  --red:#f87171;--red-soft:rgba(248,113,113,.12);
+  --yellow:#fbbf24;--yellow-soft:rgba(251,191,36,.12);
+  --purple:#a78bfa;--purple-soft:rgba(167,139,250,.12);
+}
+/* ── THÈME GRIS NEUTRE ── */
+[data-theme="neutral"]{
+  --bg:#111113;--surface:#1c1c1e;--surface2:#2c2c2e;--surface3:#3a3a3c;
+  --border:#3a3a3c;--text:#f5f5f7;--text-muted:#8e8e93;--text-dim:#4a4a4e;
+  --accent:#0a84ff;--accent-soft:rgba(10,132,255,.12);
+  --green:#30d158;--green-soft:rgba(48,209,88,.12);
+  --orange:#ff9f0a;--orange-soft:rgba(255,159,10,.12);
+  --red:#ff453a;--red-soft:rgba(255,69,58,.12);
+  --yellow:#ffd60a;--yellow-soft:rgba(255,214,10,.12);
+  --purple:#bf5af2;--purple-soft:rgba(191,90,242,.12);
+}
+/* Theme toggle button */
+.theme-swatch{width:28px;height:28px;border-radius:50%;border:2px solid transparent;cursor:pointer;transition:all .2s;display:inline-block;flex-shrink:0}
+.theme-swatch.active{border-color:var(--accent);transform:scale(1.15)}
+.theme-swatch:hover{transform:scale(1.1)}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px}
+#app{display:flex;height:100vh;overflow:hidden}
+
+/* ── SIDEBAR ── */
+#sidebar{width:240px;min-width:240px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+#sb-head{padding:14px 14px 10px;border-bottom:1px solid var(--border)}
+#sb-head h1{font-size:12px;font-weight:700;color:var(--accent);letter-spacing:.08em;text-transform:uppercase}
+#sb-head p{font-size:10.5px;color:var(--text-muted);margin-top:2px}
+#sb-files{padding:8px 10px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:5px}
+.file-btn{display:flex;align-items:center;gap:6px;padding:5px 9px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface2);cursor:pointer;font-size:11px;font-weight:500;color:var(--text-muted);transition:all .15s}
+.file-btn:hover{background:var(--surface3);color:var(--text)}
+.file-btn.loaded{border-color:rgba(46,204,122,.3);color:var(--green);background:var(--green-soft)}
+.file-dot{width:6px;height:6px;border-radius:50%;background:var(--text-dim);flex-shrink:0}
+.file-btn.loaded .file-dot{background:var(--green)}
+.save-btn{display:flex;align-items:center;justify-content:center;gap:5px;padding:6px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;cursor:pointer;font-size:11px;font-weight:600;transition:all .15s;font-family:var(--font)}
+.save-btn:hover{background:#3a7de8}.save-btn:disabled{opacity:.4;cursor:not-allowed}
+#sb-nav{flex:1;overflow-y:auto;padding:6px 0}
+.nav-group{margin-bottom:2px}
+.nav-group-label{font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);padding:8px 14px 3px}
+.nav-item{display:flex;align-items:center;gap:7px;padding:6px 14px;cursor:pointer;transition:background .15s;font-size:12px;color:var(--text-muted);position:relative}
+.nav-item:hover{background:var(--surface2);color:var(--text)}
+.nav-item.active{background:var(--accent-soft);color:var(--accent)}
+.nav-item.active::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);border-radius:0 2px 2px 0}
+.nav-item .badge{margin-left:auto;background:var(--surface3);color:var(--text-muted);font-size:9.5px;padding:1px 5px;border-radius:8px;font-family:var(--mono)}
+.nav-item.active .badge{background:var(--accent-soft);color:var(--accent)}
+.nav-dot{width:5px;height:5px;border-radius:50%;background:var(--text-dim);flex-shrink:0}
+.nav-item.active .nav-dot{background:var(--accent)}
+.nav-item.admin-item{color:var(--purple)}
+.nav-item.admin-item.active{background:var(--purple-soft);color:var(--purple)}
+.nav-item.admin-item.active::before{background:var(--purple)}
+
+/* ── MAIN ── */
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+#topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+#topbar h2{font-size:14px;font-weight:600;flex:1}
+.month-tab{padding:3px 8px;border-radius:5px;font-size:10.5px;font-weight:600;cursor:pointer;color:var(--text-muted);transition:all .15s;font-family:var(--mono)}
+.month-tab:hover{background:var(--surface2);color:var(--text)}
+.month-tab.active{background:var(--accent);color:#fff}
+.btn{padding:6px 12px;border-radius:var(--r);border:none;cursor:pointer;font-family:var(--font);font-size:12px;font-weight:500;transition:all .15s;display:flex;align-items:center;gap:5px}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:#3a7de8}
+.btn-ghost{background:transparent;color:var(--text-muted);border:1px solid var(--border)}.btn-ghost:hover{background:var(--surface2);color:var(--text)}
+.btn-danger{background:var(--red-soft);color:var(--red);border:1px solid rgba(247,79,79,.2)}.btn-danger:hover{background:rgba(247,79,79,.2)}
+.btn-warning{background:var(--orange-soft);color:var(--orange);border:1px solid rgba(247,148,58,.2)}.btn-warning:hover{background:rgba(247,148,58,.25)}
+.btn-success{background:var(--green-soft);color:var(--green);border:1px solid rgba(46,204,122,.2)}.btn-success:hover{background:rgba(46,204,122,.2)}
+.btn-purple{background:var(--purple-soft);color:var(--purple);border:1px solid rgba(192,126,247,.2)}.btn-purple:hover{background:rgba(192,126,247,.2)}
+#content{flex:1;overflow-y:auto}
+
+/* ── DASHBOARD ── */
+#dashboard{padding:20px}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);padding:12px 14px;position:relative;overflow:hidden;cursor:pointer;transition:border-color .15s}
+.kpi-card:hover{border-color:var(--border-light)}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.kpi-card.blue::before{background:var(--accent)}.kpi-card.green::before{background:var(--green)}
+.kpi-card.orange::before{background:var(--orange)}.kpi-card.red::before{background:var(--red)}
+.kpi-card.purple::before{background:var(--purple)}.kpi-card.yellow::before{background:var(--yellow)}
+.kpi-label{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:5px}
+.kpi-value{font-size:24px;font-weight:700;font-family:var(--mono)}
+.kpi-card.blue .kpi-value{color:var(--accent)}.kpi-card.green .kpi-value{color:var(--green)}
+.kpi-card.orange .kpi-value{color:var(--orange)}.kpi-card.red .kpi-value{color:var(--red)}
+.kpi-card.purple .kpi-value{color:var(--purple)}.kpi-card.yellow .kpi-value{color:var(--yellow)}
+.kpi-sub{font-size:10.5px;color:var(--text-muted);margin-top:2px}
+.dash-widgets{display:flex;flex-direction:column;gap:14px}
+.dash-row{display:grid;gap:14px}
+.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);padding:16px;overflow:hidden}
+.dash-card-title{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.stat-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)}
+.stat-row:last-child{border-bottom:none}
+.stat-bar-wrap{flex:1;height:3px;background:var(--surface3);border-radius:2px;overflow:hidden}
+.stat-bar{height:100%;border-radius:2px;background:var(--accent)}
+.stat-val{font-size:11px;font-family:var(--mono);color:var(--text-muted);min-width:18px;text-align:right}
+.alert-item{display:flex;align-items:center;gap:8px;padding:6px 7px;border-radius:var(--r);cursor:pointer;transition:background .1s}
+.alert-item:hover{background:var(--surface2)}
+.alert-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.alert-dot.red{background:var(--red)}.alert-dot.orange{background:var(--orange)}
+.alert-dot.yellow{background:var(--yellow)}.alert-dot.blue{background:var(--accent)}
+.alert-kpi{display:flex;flex-direction:column;align-items:center;padding:5px 9px;border-radius:var(--r);cursor:pointer;border:1px solid transparent;transition:all .15s;min-width:60px}
+.alert-kpi:hover{filter:brightness(1.1)}
+.ak-val{font-size:16px;font-weight:700;font-family:var(--mono);line-height:1}
+.ak-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-top:2px;white-space:nowrap}
+.ak-red{background:var(--red-soft);color:var(--red)}.ak-orange{background:var(--orange-soft);color:var(--orange)}
+.ak-yellow{background:var(--yellow-soft);color:var(--yellow)}.ak-blue{background:var(--accent-soft);color:var(--accent)}
+.ak-all{background:var(--surface3);color:var(--text-muted)}.ak-dim{background:var(--surface2);color:var(--text-dim)}
+
+/* ── IMPORTANCE CHIPS ── */
+.imp-chip{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:.03em;text-transform:uppercase}
+.imp-normal{background:var(--surface3);color:var(--text-muted)}
+.imp-moyenne{background:var(--accent-soft);color:var(--accent)}
+.imp-haute{background:var(--orange-soft);color:var(--orange)}
+.imp-urgente{background:var(--red-soft);color:var(--red)}
+
+/* ── TABLE ── */
+#table-panel{display:flex;flex-direction:column;height:100%}
+.table-toolbar{padding:10px 18px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;flex-wrap:wrap}
+.search-wrap{position:relative;flex:1;min-width:160px;max-width:280px}
+.search-wrap input{width:100%;padding:6px 9px 6px 28px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:var(--font);font-size:12px}
+.search-wrap input:focus{outline:none;border-color:var(--accent)}
+.search-icon{position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:11px}
+.filter-select{padding:6px 9px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:var(--font);font-size:11.5px}
+.filter-select:focus{outline:none;border-color:var(--accent)}
+.record-count{font-size:10.5px;color:var(--text-muted);font-family:var(--mono);margin-left:auto}
+.table-wrap{flex:1;overflow:auto}
+table{width:100%;border-collapse:collapse}
+thead tr{background:var(--surface);position:sticky;top:0;z-index:5}
+thead th{padding:8px 11px;text-align:left;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none}
+thead th:hover{color:var(--text)}
+tbody tr{border-bottom:1px solid var(--border);transition:background .1s;cursor:pointer}
+tbody tr:hover{background:var(--surface2)}
+tbody tr.selected{background:var(--accent-soft)}
+tbody td{padding:7px 11px;font-size:12px;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
+tbody td:first-child{font-family:var(--mono);font-size:10.5px;color:var(--text-muted)}
+.chip{display:inline-block;padding:2px 7px;border-radius:10px;font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.chip-blue{background:var(--accent-soft);color:var(--accent)}.chip-green{background:var(--green-soft);color:var(--green)}
+.chip-orange{background:var(--orange-soft);color:var(--orange)}.chip-red{background:var(--red-soft);color:var(--red)}
+.chip-purple{background:var(--purple-soft);color:var(--purple)}.chip-gray{background:var(--surface3);color:var(--text-muted)}
+
+/* ── MODAL ── */
+#modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:center;justify-content:center}
+#modal-overlay.open{display:flex}
+#modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);width:720px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,.5)}
+#modal-header{padding:14px 18px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+#modal-header h3{flex:1;font-size:14px;font-weight:600}
+#modal-body{flex:1;overflow-y:auto;padding:16px 18px}
+#modal-footer{padding:10px 18px;border-top:1px solid var(--border);display:flex;gap:7px;justify-content:flex-end}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.form-group{display:flex;flex-direction:column;gap:4px}
+.form-group.full{grid-column:1/-1}
+.form-group label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted)}
+.form-group input,.form-group select,.form-group textarea{padding:7px 9px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:var(--font);font-size:12.5px}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:var(--accent)}
+.form-group textarea{resize:vertical;min-height:60px}
+
+/* ── ADMIN PAGE ── */
+#admin-page{height:100%;display:flex;flex-direction:column}
+.admin-tabs{display:flex;gap:2px;padding:12px 20px 0;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto}
+.admin-tab{padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;color:var(--text-muted);border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap}
+.admin-tab:hover{color:var(--text)}
+.admin-tab.active{color:var(--purple);border-bottom-color:var(--purple)}
+.admin-content{flex:1;overflow-y:auto;padding:20px}
+.admin-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);padding:18px;margin-bottom:16px}
+.admin-section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--purple);margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.admin-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)}
+.admin-row:last-child{border-bottom:none}
+.admin-row-label{flex:1;font-size:12.5px}
+.admin-row-sub{font-size:11px;color:var(--text-muted);margin-top:1px}
+.col-tag{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:grab;user-select:none;transition:all .15s}
+.col-tag:hover{background:var(--surface3)}
+.col-tag.custom{border-color:rgba(192,126,247,.4);color:var(--purple);background:var(--purple-soft)}
+.col-tag.system{opacity:.6}
+.col-tag .del-col{cursor:pointer;color:var(--text-dim);font-size:10px;margin-left:2px;transition:color .15s}
+.col-tag .del-col:hover{color:var(--red)}
+.cols-container{display:flex;flex-wrap:wrap;gap:6px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);min-height:46px}
+.add-col-row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:flex-end}
+.add-col-row input,.add-col-row select{padding:6px 9px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:var(--font);font-size:12px}
+.add-col-row input:focus,.add-col-row select:focus{outline:none;border-color:var(--purple)}
+
+/* template cards */
+.template-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.tpl-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px;cursor:pointer;transition:all .15s;position:relative}
+.tpl-card:hover{border-color:var(--purple);background:var(--surface3)}
+.tpl-card.active-tpl{border-color:var(--purple);background:var(--purple-soft)}
+.tpl-card h4{font-size:12.5px;font-weight:600;margin-bottom:4px}
+.tpl-card p{font-size:11px;color:var(--text-muted)}
+.tpl-card .tpl-del{position:absolute;top:8px;right:8px;font-size:10px;color:var(--text-dim);cursor:pointer;padding:2px 5px;border-radius:4px}
+.tpl-card .tpl-del:hover{background:var(--red-soft);color:var(--red)}
+
+/* widget list */
+.widget-item{display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:6px;cursor:grab}
+.widget-item:hover{border-color:var(--border-light)}
+.widget-item input[type=checkbox]{accent-color:var(--purple);width:14px;height:14px}
+.widget-item select{padding:4px 7px;background:var(--surface);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:11px;font-family:var(--font)}
+.widget-item select:focus{outline:none;border-color:var(--purple)}
+.widget-move{color:var(--text-dim);cursor:grab;font-size:14px;margin-right:4px}
+
+/* notify */
+#notify{position:fixed;bottom:20px;right:20px;z-index:300;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:10px 15px;font-size:12.5px;display:none;align-items:center;gap:8px;box-shadow:0 4px 20px rgba(0,0,0,.4)}
+#notify.show{display:flex}
+.empty-state{padding:50px;text-align:center;color:var(--text-muted)}
+.empty-state .es-icon{font-size:32px;margin-bottom:8px;opacity:.35}
+
+/* recent table in widget */
+.recent-table{width:100%;border-collapse:collapse;font-size:11.5px}
+.recent-table th{padding:5px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:var(--text-dim);border-bottom:1px solid var(--border)}
+.recent-table td{padding:5px 8px;border-bottom:1px solid var(--border);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.recent-table tr:last-child td{border-bottom:none}
+.recent-table tr:hover td{background:var(--surface2)}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+    <div id="sb-head">
+      <h1>GRH Manager</h1>
+      <p>Paye · Tableau de Bord</p>
+    </div>
+    <div id="sb-files">
+      <div class="file-btn" id="fb-paye" onclick="pickFile('paye')">
+        <div class="file-dot"></div><span id="fb-paye-label">Cahier de Paye…</span>
+      </div>
+      <div class="file-btn" id="fb-tdb" onclick="pickFile('tdb')">
+        <div class="file-dot"></div><span id="fb-tdb-label">Tableau de Bord…</span>
+      </div>
+      <button class="save-btn" id="save-all-btn" onclick="saveAllFiles()" disabled>💾 Enregistrer</button>
+    </div>
+    <div id="sb-nav">
+      <div class="nav-group">
+        <div class="nav-group-label">Vue générale</div>
+        <div class="nav-item active" data-view="dashboard" onclick="setView('dashboard',this)"><div class="nav-dot"></div>Tableau de bord</div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">Cahier de Paye</div>
+        <div class="nav-item" data-view="paye" onclick="setView('paye',this)"><div class="nav-dot"></div>Suivi mensuel<span class="badge" id="badge-paye">0</span></div>
+        <div class="nav-item" data-view="n1" onclick="setView('n1',this)"><div class="nav-dot"></div>Report N+1<span class="badge" id="badge-n1">0</span></div>
+        <div class="nav-item" data-view="params-paye" onclick="setView('params-paye',this)"><div class="nav-dot"></div>Paramétrage</div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">Tableau de Bord RH</div>
+        <div class="nav-item" data-view="cdd" onclick="setView('cdd',this)"><div class="nav-dot"></div>CDD<span class="badge" id="badge-cdd">0</span></div>
+        <div class="nav-item" data-view="cnp" onclick="setView('cnp',this)"><div class="nav-dot"></div>CNP<span class="badge" id="badge-cnp">0</span></div>
+        <div class="nav-item" data-view="stagiaires" onclick="setView('stagiaires',this)"><div class="nav-dot"></div>Stagiaires<span class="badge" id="badge-stagiaires">0</span></div>
+        <div class="nav-item" data-view="apprentis" onclick="setView('apprentis',this)"><div class="nav-dot"></div>Apprentis<span class="badge" id="badge-apprentis">0</span></div>
+        <div class="nav-item" data-view="experts" onclick="setView('experts',this)"><div class="nav-dot"></div>Experts<span class="badge" id="badge-experts">0</span></div>
+        <div class="nav-item" data-view="dispo" onclick="setView('dispo',this)"><div class="nav-dot"></div>Disponibilités<span class="badge" id="badge-dispo">0</span></div>
+        <div class="nav-item" data-view="detach-sort" onclick="setView('detach-sort',this)"><div class="nav-dot"></div>Détach. sortants<span class="badge" id="badge-detach-sort">0</span></div>
+        <div class="nav-item" data-view="detach-entr" onclick="setView('detach-entr',this)"><div class="nav-dot"></div>Détach. entrants<span class="badge" id="badge-detach-entr">0</span></div>
+        <div class="nav-item" data-view="mater" onclick="setView('mater',this)"><div class="nav-dot"></div>Maternité<span class="badge" id="badge-mater">0</span></div>
+        <div class="nav-item" data-view="parental" onclick="setView('parental',this)"><div class="nav-dot"></div>Congé parental<span class="badge" id="badge-parental">0</span></div>
+        <div class="nav-item" data-view="indispo" onclick="setView('indispo',this)"><div class="nav-dot"></div>Indisponibilité phys.<span class="badge" id="badge-indispo">0</span></div>
+        <div class="nav-item" data-view="tpartiel" onclick="setView('tpartiel',this)"><div class="nav-dot"></div>Temps partiel<span class="badge" id="badge-tpartiel">0</span></div>
+        <div class="nav-item" data-view="sejour" onclick="setView('sejour',this)"><div class="nav-dot"></div>Cartes séjour<span class="badge" id="badge-sejour">0</span></div>
+        <div class="nav-item" data-view="tpt" onclick="setView('tpt',this)"><div class="nav-dot"></div>Temps partiel thér.<span class="badge" id="badge-tpt">0</span></div>
+        <div class="nav-item" data-view="at" onclick="setView('at',this)"><div class="nav-dot"></div>Accidents travail<span class="badge" id="badge-at">0</span></div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">Système</div>
+        <div class="nav-item admin-item" data-view="admin" onclick="setView('admin',this)"><div class="nav-dot"></div>⚙ Administration</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div id="main">
+    <div id="topbar">
+      <h2 id="topbar-title">Tableau de bord</h2>
+      <div id="topbar-extra"></div>
+      <div style="display:flex;gap:7px">
+        <button class="btn btn-ghost" onclick="exportCSV()" id="btn-export" style="display:none">⬇ CSV</button>
+        <button class="btn btn-primary" onclick="openAddModal()" id="btn-add" style="display:none">+ Ajouter</button>
+      </div>
+    </div>
+    <!-- Banner rechargement automatique -->
+    <div id="reload-banner" style="display:none;align-items:center;gap:10px;padding:7px 18px;background:var(--green-soft);border-bottom:1px solid rgba(46,204,122,.25);font-size:11.5px;color:var(--green);flex-shrink:0">
+      <span>✓ Fichiers rechargés automatiquement :</span>
+      <strong id="reload-names"></strong>
+      <span style="margin-left:auto;color:var(--text-muted);font-size:11px">Les fichiers sont mémorisés entre les sessions</span>
+      <button onclick="forgetFiles()" style="background:transparent;border:1px solid rgba(46,204,122,.3);color:var(--green);padding:2px 8px;border-radius:5px;cursor:pointer;font-size:10.5px;font-family:var(--font)">Changer de fichiers</button>
+      <button onclick="document.getElementById('reload-banner').style.display='none'" style="background:transparent;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;padding:0 4px">✕</button>
+    </div>
+    <div id="content"></div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div id="modal-overlay">
+  <div id="modal">
+    <div id="modal-header"><h3 id="modal-title">Ajouter</h3><button class="btn btn-ghost" onclick="closeModal()" style="padding:3px 8px">✕</button></div>
+    <div id="modal-body"></div>
+    <div id="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Annuler</button>
+      <button class="btn btn-primary" id="modal-save-btn" onclick="saveModal()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<div id="notify"><span id="notify-text"></span></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// CONSTANTES DE BASE
+// ═══════════════════════════════════════════════════════════
+const MONTHS=['JANV','FEV','MARS','AVR','MAI','JUIN','JUILL','AOUT','SEPT','OCT','NOV','DEC'];
+const POLES=['CAB','CESER','DGS','DPCR','GROU','IGRIF','PARTE','PEE','PFIN1','PFIN2','PFPA','PIRCP','PMAJI','POLAT1','POLAT2','PRH1','PRH2','PS4','PTN','PTRESOR'];
+const TYPES_PAYE=['APPRENTI','ATA','ASA','AUTRE','CARR','CDD','CDI','DEPART','EXPERT','LICENCIEMENT','MAD','MALADIE','MISE STAGE','MUT/DET','PROJ','REMP','STAG.ECOLE','VTE'];
+const IMPORTANCES=['Normal','Moyenne','Haute','Urgente'];
+
+// ═══════════════════════════════════════════════════════════
+// CONFIG ADMIN — persistée dans localStorage
+// ═══════════════════════════════════════════════════════════
+function loadAdminConfig() {
+  try { return JSON.parse(localStorage.getItem('grh_admin_config')||'null')||defaultAdminConfig(); }
+  catch(e) { return defaultAdminConfig(); }
+}
+function saveAdminConfig() {
+  localStorage.setItem('grh_admin_config', JSON.stringify(ADMIN));
+}
+function defaultAdminConfig() {
+  return {
+    // Colonnes custom ajoutées par l'utilisateur par table
+    // Format: { tableKey: [{key, label, type, options?}] }
+    customCols: {},
+    // Colonnes visibles dans le tableau (ordre)
+    visibleCols: {},
+    // Colonne "importance" activée par table
+    importanceEnabled: {},
+    // Onglets personnalisés ajoutés
+    customTabs: [],   // [{id, label, group, parentFile}]
+    // Config dashboard
+    dashConfig: {
+      kpiOrder: ['dispo','cdd','stagiaires','apprentis','at','mater','tpartiel','paye'],
+      widgets: [
+        {id:'alerts',    enabled:true,  cols:2, title:'Alertes & Dates butoir'},
+        {id:'poleStats', enabled:true,  cols:1, title:'Dispos par pôle'},
+        {id:'srcStats',  enabled:true,  cols:1, title:'Alertes par source'},
+        {id:'recentPaye',enabled:false, cols:2, title:'Derniers mouvements paye', count:10, filterImp:''},
+        {id:'recentCdd', enabled:false, cols:1, title:'Derniers CDD', count:5, filterImp:''},
+        {id:'recentDispo',enabled:false,cols:1, title:'Dernières dispos', count:5, filterImp:''},
+        {id:'recentAt',  enabled:false, cols:1, title:'Derniers AT', count:5, filterImp:''},
+        {id:'recentMater',enabled:false,cols:1, title:'Dernières maternités', count:5, filterImp:''},
+      ]
+    },
+    // Templates sauvegardés
+    templates: [],
+    // Paramètres généraux
+    settings: {
+      alertHorizon: 180,
+      defaultImportance: 'Normal',
+      dateFormat: 'fr'
+    }
+  };
+}
+
+let ADMIN = loadAdminConfig();
+
+// ═══════════════════════════════════════════════════════════
+// SCHEMAS DYNAMIQUES
+// ═══════════════════════════════════════════════════════════
+const PAYE_COLS_BASE=['pole','matricule','nom','prenom','type','newFlag','impactPaye','saisie','acte','gecco','paye','pref','bulletinElectro','remarques'];
+const N1_COLS=['pole','matricule','nom','prenom','moisPaye','type','impactPaye','dateImpact'];
+
+const TDB_MAP_BASE={
+  tdb_cdd:        {sheet:'CDD',          cols:['matricule','nom','prenom','age','ventilBudget','statut','typeContrat','motifCode','motifLibelle','grade','dateDebut','dateFin','date1erContrat','dateEntree','pole','service']},
+  tdb_cnp:        {sheet:'CNP',          cols:['matricule','nom','prenom','grade','age','ventilBudget','motifCode','motifLibelle','dateDebut','dateFin','date1erContrat','dateEntree','pole','service']},
+  tdb_stagiaires: {sheet:'STAGIAIRES',   cols:['matricule','nom','prenom','grade','pole','typeStage','debutStage','titularisation','dateECS','dateEnvoiECS','dateReceptionECS','dateEFS','dateEnvoiEFS','dateReceptionEFS','cnracl','formation','sarcp','observations']},
+  tdb_apprentis:  {sheet:'APPRENTIS',    cols:['matricule','nom','prenom','age','typeContrat','numContrat','dateDebut','dateFin','pole','service','maitre','maNbi','changements']},
+  tdb_experts:    {sheet:'EXPERTS',      cols:['matricule','nom','prenom','gestion','positionAdmin','dateDebutPos','dateFinPos','dateDebutSit','dateFinSit','pole','service']},
+  tdb_detach_sort:{sheet:'DETACHEMENT SORTANTS',cols:['matricule','nom','prenom','grade','positionAdminCode','positionAdmin','codeDet','orgAccueil','dateDebut','dateFin','codeGestion','pole','service','remarques','contacts']},
+  tdb_detach_entr:{sheet:'DETACH ENTRANTS',     cols:['matricule','nom','prenom','statut','ventilBudget','grade','dateNomination','dateAnciennete','dateEntreeStatut','dateDebut','dateFin','detachLibelle','orgOrigine','pole','service','contactAdmin']},
+  tdb_dispo:      {sheet:'DISPO',        cols:['matricule','nom','prenom','grade','categorie','positionAdmin','codeDispo','controleCode','detail','date1erDispo','dateDebut','dateFin','fin5ans','fin10ans','codeGestion','pole','service']},
+  tdb_mater:      {sheet:'MATER',        cols:['pole','matricule','nom','prenom','statut','datePrevue','dateReelle','grossessePatho','dateDebutArret','dateFinArret','arreteFait','saisieAstre','acteNaissance','couchesPatho','arreteModif','signalIJSS','envoiFormulaire','suppressionTransport','observations']},
+  tdb_parental:   {sheet:'PARENTAL',     cols:['matricule','nom','prenom','grade','positionAdmin','dateDebut','dateFin','codeGestion','pole','service','observations']},
+  tdb_indispo:    {sheet:'INDISPO PHYSIQUE',cols:['pole','matricule','nom','prenom','positionAdmin','dateDebut','dateFin','dateRelance','demandeAgentRecep','motifDemande','conseilMedical','dateExpertise','observations']},
+  tdb_tpartiel:   {sheet:'TPARTIEL',     cols:['matricule','nom','prenom','statut','grade','quotite','typeTP','dateDebut','dateFin','pole','service','observations']},
+  tdb_sejour:     {sheet:'Carte Sejour', cols:['matricule','nom','prenom','statut','nationalite','numeroCarte','dateExpiration','pole','service']},
+  tdb_tpt:        {sheet:'TPT',          cols:['matricule','nom','prenom','positionAdmin','tauxRemuneration','coeffTaux','codeTpt','typeTPT','date1erTPT','dateDebut','dateFin','pole','service']},
+  tdb_at:         {sheet:'AT',           cols:['matricule','nom','prenom','typeAT','dateAT','arretTravail','dateDebutArret','dateFinArret','soins','dateDebutSoins','dateFinSoins','dateExpertise','avisMedecinExpert','saisineCommission','dateCommission','imputabilite','transmissionFinal','observations']},
+};
+
+// Retourne les cols dynamiques (base + custom + importance si activé)
+function getEffectiveCols(tableKey) {
+  const base = tableKey==='paye_' ? [...PAYE_COLS_BASE] :
+               tableKey==='paye_N1' ? [...N1_COLS] :
+               TDB_MAP_BASE[tableKey] ? [...TDB_MAP_BASE[tableKey].cols] : [];
+  const custom = (ADMIN.customCols[tableKey]||[]).map(c=>c.key);
+  if (ADMIN.importanceEnabled[tableKey]) base.push('_importance');
+  return [...base, ...custom];
+}
+
+function getCustomColDefs(tableKey) {
+  const defs = [];
+  if (ADMIN.importanceEnabled[tableKey]) {
+    defs.push({key:'_importance', label:'Importance', type:'select', options:IMPORTANCES, isImportance:true});
+  }
+  return [...defs, ...(ADMIN.customCols[tableKey]||[])];
+}
+
+// Build SCHEMAS dynamically
+const SCHEMAS_BASE = {
+  paye:{title:'Cahier de Paye',
+    fields:[
+      {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'matricule',label:'Matricule',type:'text'},
+      {key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
+      {key:'type',label:'Type',type:'select',options:TYPES_PAYE},{key:'newFlag',label:'NEW',type:'select',options:['OUI','NON','']},
+      {key:'impactPaye',label:'Impact Paye',type:'select',options:['OUI','NON','']},
+      {key:'saisie',label:'Saisie',type:'select',options:['OK','A FAIRE','SO','']},
+      {key:'acte',label:'Acte',type:'select',options:['OK','A FAIRE','SO','']},
+      {key:'gecco',label:'GECCO & PJ',type:'select',options:['OK','A FAIRE','SO','']},
+      {key:'paye',label:'Paye',type:'select',options:['OK','A FAIRE','SO','']},
+      {key:'pref',label:'PREF',type:'select',options:['OK','A FAIRE','SO','']},
+      {key:'bulletinElectro',label:'Bulletin Électro',type:'select',options:['OK','A FAIRE','SO','']},
+      {key:'remarques',label:'Remarques',type:'textarea',full:true}],
+    cols:['pole','matricule','nom','prenom','type','impactPaye','saisie','acte','paye','bulletinElectro']},
+  dispo:{title:'Disponibilités',fields:[
+    {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
+    {key:'grade',label:'Grade',type:'text'},{key:'categorie',label:'Catégorie',type:'select',options:['T','C','B','A']},
+    {key:'positionAdmin',label:'Position administrative',type:'text',full:true},
+    {key:'codeDispo',label:'Code dispo',type:'select',options:['D1','D4','D7','CS']},
+    {key:'detail',label:'Détail N4DS',type:'text',full:true},
+    {key:'date1erDispo',label:'Date 1ère dispo',type:'date'},{key:'dateDebut',label:'Date début',type:'date'},
+    {key:'dateFin',label:'Date fin',type:'date'},{key:'fin5ans',label:'Fin 5 ans',type:'date'},
+    {key:'fin10ans',label:'Fin 10 ans',type:'date'},{key:'codeGestion',label:'Code gestion',type:'text'},
+    {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'}],
+    cols:['matricule','nom','prenom','grade','positionAdmin','codeDispo','dateDebut','dateFin','fin5ans','pole']},
+  cdd:{title:'CDD',fields:[
+    {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
+    {key:'age',label:'Âge',type:'number'},{key:'ventilBudget',label:'Ventilation budgétaire',type:'text'},
+    {key:'statut',label:'Statut',type:'text'},{key:'typeContrat',label:'Type de contrat',type:'text'},
+    {key:'motifCode',label:'Motif (code)',type:'text'},{key:'motifLibelle',label:'Motif (libellé)',type:'text'},
+    {key:'grade',label:'Grade',type:'text'},{key:'dateDebut',label:'Date début',type:'date'},{key:'dateFin',label:'Date fin',type:'date'},
+    {key:'date1erContrat',label:'1er contrat Astre',type:'date'},{key:'dateEntree',label:"Date entrée",type:'date'},
+    {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'}],
+    cols:['matricule','nom','prenom','grade','statut','typeContrat','dateDebut','dateFin','pole','service']},
+  cnp:{title:'CNP',fields:[
+    {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
+    {key:'grade',label:'Grade',type:'text'},{key:'age',label:'Âge',type:'number'},
+    {key:'ventilBudget',label:'Ventilation budgétaire',type:'text'},{key:'motifCode',label:'Motif (code)',type:'text'},
+    {key:'motifLibelle',label:'Motif (libellé)',type:'text'},{key:'dateDebut',label:'Date début',type:'date'},
+    {key:'dateFin',label:'Date fin',type:'date'},{key:'date1erContrat',label:'1er contrat',type:'date'},
+    {key:'dateEntree',label:"Date entrée",type:'date'},{key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'}],
+    cols:['matricule','nom','prenom','grade','motifLibelle','dateDebut','dateFin','pole']},
+  stagiaires:{title:'Stagiaires',fields:[
+    {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
+    {key:'grade',label:'Grade',type:'text'},{key:'pole',label:'Pôle',type:'select',options:POLES},
+    {key:'typeStage',label:'Type de stage',type:'text'},{key:'debutStage',label:'Début de stage',type:'date'},
+    {key:'titularisation',label:'Titularisation',type:'date'},{key:'dateEnvoiECS',label:'Envoi ECS',type:'date'},
+    {key:'dateReceptionECS',label:'Réception ECS',type:'date'},{key:'dateEnvoiEFS',label:'Envoi EFS',type:'date'},
+    {key:'dateReceptionEFS',label:'Réception EFS',type:'date'},{key:'cnracl',label:'CNRACL',type:'select',options:['OUI','NON','']},
+    {key:'formation',label:"Formation",type:'select',options:['OUI','NON','']},
+    {key:'sarcp',label:'SARCP Art.38',type:'text'},{key:'observations',label:'Observations',type:'textarea',full:true}],
+    cols:['matricule','nom','prenom','grade','pole','typeStage','debutStage','titularisation']},
+  apprentis:{title:'Apprentis',fields:[
+    {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
+    {key:'age',label:'Âge',type:'number'},{key:'typeContrat',label:'Type contrat',type:'text'},
+    {key:'numContrat',label:'N° contrat',type:'text'},{key:'dateDebut',label:'Date début',type:'date'},{key:'dateFin',label:'Date fin',type:'date'},
+    {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'},
+    {key:'maitre',label:"Maître apprentissage",type:'text'},{key:'maNbi',label:'MA NBI',type:'select',options:['OUI','NON','']},
+    {key:'changements',label:'Changements rémunération',type:'textarea',full:true}],
+    cols:['matricule','nom','prenom','age','dateDebut','dateFin','pole','service','maitre']},
+  experts:{title:'Experts',fields:[
+    {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
+    {key:'gestion',label:'Gestion',type:'text'},{key:'positionAdmin',label:'Position administrative',type:'text'},
+    {key:'dateDebutPos',label:'Début position',type:'date'},{key:'dateFinPos',label:'Fin position',type:'date'},
+    {key:'dateDebutSit',label:'Début situation',type:'date'},{key:'dateFinSit',label:'Fin situation',type:'date'},
+    {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'}],
+    cols:['matricule','nom','prenom','gestion','positionAdmin','dateDebutPos','dateFinPos','pole']},
+  detach_sort:{title:'Détachements sortants',fields:[
+    {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
+    {key:'grade',label:'Grade',type:'text'},{key:'positionAdminCode',label:'Code position',type:'text'},
+    {key:'positionAdmin',label:'Position administrative',type:'text'},{key:'codeDet',label:'Code détachement',type:'text'},
+    {key:'orgAccueil',label:"Organisme d'accueil",type:'text'},{key:'dateDebut',label:'Date début',type:'date'},{key:'dateFin',label:'Date fin',type:'date'},
+    {key:'codeGestion',label:'Code gestion',type:'text'},{key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'},
+    {key:'remarques',label:'Remarques',type:'textarea',full:true},{key:'contacts',label:'Contacts',type:'text',full:true}],
+    cols:['matricule','nom','prenom','grade','orgAccueil','dateDebut','dateFin','pole']},
+  detach_entr:{title:'Détachements entrants',fields:[
+    {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
+    {key:'statut',label:'Statut',type:'text'},{key:'ventilBudget',label:'Ventilation budgétaire',type:'text'},
+    {key:'grade',label:'Grade',type:'text'},{key:'dateNomination',label:'Nomination',type:'date'},
+    {key:'dateAnciennete',label:"Ancienneté",type:'date'},{key:'dateEntreeStatut',label:'Entrée statut',type:'date'},
+    {key:'dateDebut',label:'Début',type:'date'},{key:'dateFin',label:'Fin',type:'date'},
+    {key:'detachLibelle',label:'Détachement',type:'text'},{key:'orgOrigine',label:"Organisme d'origine",type:'text'},
+    {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'},
+    {key:'contactAdmin',label:"Contact admin",type:'text',full:true}],
+    cols:['matricule','nom','prenom','grade','orgOrigine','dateDebut','dateFin','pole']},
+  mater:{title:'Maternité',fields:[
+    {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'matricule',label:'Matricule',type:'text'},
+    {key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},{key:'statut',label:'Statut',type:'text'},
+    {key:'datePrevue',label:'Date prévue',type:'date'},{key:'dateReelle',label:'Date réelle',type:'date'},
+    {key:'grossessePatho',label:'Grossesse patho.',type:'select',options:['OUI','NON','']},
+    {key:'dateDebutArret',label:'Début arrêt',type:'date'},{key:'dateFinArret',label:'Fin arrêt',type:'date'},
+    {key:'arreteFait',label:'Arrêté fait',type:'select',options:['OUI','NON','']},
+    {key:'saisieAstre',label:'Saisie Astre',type:'select',options:['OUI','NON','']},
+    {key:'acteNaissance',label:'Acte naissance',type:'select',options:['OUI','NON','']},
+    {key:'couchesPatho',label:'Couches patho',type:'select',options:['OUI','NON','']},
+    {key:'arreteModif',label:'Arrêté modif.',type:'select',options:['OUI','NON','']},
+    {key:'signalIJSS',label:'Signal IJSS',type:'select',options:['OUI','NON','']},
+    {key:'observations',label:'Observations',type:'textarea',full:true}],
+    cols:['matricule','nom','prenom','pole','statut','datePrevue','dateReelle','arreteFait','saisieAstre']},
+  parental:{title:'Congé parental',fields:[
+    {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
+    {key:'grade',label:'Grade',type:'text'},{key:'positionAdmin',label:'Position administrative',type:'text'},
+    {key:'dateDebut',label:'Date début',type:'date'},{key:'dateFin',label:'Date fin',type:'date'},
+    {key:'codeGestion',label:'Code gestion',type:'text'},{key:'pole',label:'Pôle',type:'select',options:POLES},
+    {key:'service',label:'Service',type:'text'},{key:'observations',label:'Observations',type:'textarea',full:true}],
+    cols:['matricule','nom','prenom','grade','dateDebut','dateFin','pole','service']},
+  indispo:{title:'Indisponibilité physique',fields:[
+    {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'matricule',label:'Matricule',type:'text'},
+    {key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
+    {key:'positionAdmin',label:'Position administrative',type:'text'},
+    {key:'dateDebut',label:'Début CLM/CLD',type:'date'},{key:'dateFin',label:'Fin CLM/CLD',type:'date'},
+    {key:'dateRelance',label:'Date relance',type:'date'},
+    {key:'demandeAgentRecep',label:'Demande agent',type:'select',options:['OUI','NON','']},
+    {key:'motifDemande',label:'Motif',type:'text'},{key:'conseilMedical',label:'Conseil médical',type:'select',options:['OUI','NON','']},
+    {key:'dateExpertise',label:'Date expertise',type:'date'},{key:'observations',label:'Observations',type:'textarea',full:true}],
+    cols:['matricule','nom','prenom','pole','positionAdmin','dateDebut','dateFin','dateRelance']},
+  tpartiel:{title:'Temps partiel',fields:[
+    {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
+    {key:'statut',label:'Statut',type:'text'},{key:'grade',label:'Grade',type:'text'},
+    {key:'quotite',label:'Quotité',type:'text'},{key:'typeTP',label:'Type TP',type:'text'},
+    {key:'dateDebut',label:'Date début',type:'date'},{key:'dateFin',label:'Date fin',type:'date'},
+    {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'},
+    {key:'observations',label:'Observations',type:'textarea',full:true}],
+    cols:['matricule','nom','prenom','grade','quotite','typeTP','dateDebut','dateFin','pole']},
+  sejour:{title:'Cartes de séjour',fields:[
+    {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
+    {key:'statut',label:'Statut',type:'text'},{key:'nationalite',label:'Nationalité',type:'text'},
+    {key:'numeroCarte',label:'N° carte séjour',type:'text'},{key:'dateExpiration',label:'Date expiration',type:'date'},
+    {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'}],
+    cols:['matricule','nom','prenom','nationalite','numeroCarte','dateExpiration','pole']},
+  tpt:{title:'Temps partiel thérapeutique',fields:[
+    {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
+    {key:'positionAdmin',label:'Position administrative',type:'text'},{key:'tauxRemuneration',label:'Taux rémunération',type:'text'},
+    {key:'coeffTaux',label:'Coeff taux',type:'text'},{key:'codeTpt',label:'Code TPT',type:'text'},
+    {key:'typeTPT',label:'Type TPT',type:'text'},{key:'date1erTPT',label:'1ère date TPT',type:'date'},
+    {key:'dateDebut',label:'Début TPT',type:'date'},{key:'dateFin',label:'Fin TPT',type:'date'},
+    {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'}],
+    cols:['matricule','nom','prenom','typeTPT','tauxRemuneration','dateDebut','dateFin','pole']},
+  at:{title:'Accidents du travail',fields:[
+    {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
+    {key:'typeAT',label:'Type',type:'select',options:['Accident travail','Accident trajet']},
+    {key:'dateAT',label:'Date AT',type:'date'},{key:'arretTravail',label:'Arrêt travail',type:'select',options:['OUI','NON','']},
+    {key:'dateDebutArret',label:'Début arrêt',type:'date'},{key:'dateFinArret',label:'Fin arrêt',type:'date'},
+    {key:'soins',label:'Soins',type:'select',options:['OUI','NON','']},
+    {key:'dateDebutSoins',label:'Début soins',type:'date'},{key:'dateFinSoins',label:'Fin soins',type:'date'},
+    {key:'dateExpertise',label:'Date expertise',type:'date'},{key:'avisMedecinExpert',label:'Avis expert',type:'text'},
+    {key:'saisineCommission',label:'Saisine commission',type:'select',options:['OUI','NON','']},
+    {key:'dateCommission',label:'Date commission',type:'date'},
+    {key:'imputabilite',label:'Imputabilité',type:'select',options:['OUI','NON','']},
+    {key:'transmissionFinal',label:'Transmission final',type:'select',options:['OUI','NON','']},
+    {key:'observations',label:'Observations',type:'textarea',full:true}],
+    cols:['matricule','nom','prenom','typeAT','dateAT','arretTravail','dateDebutArret','dateFinArret']},
+};
+
+function getSchema(schemaKey) {
+  const base = SCHEMAS_BASE[schemaKey];
+  if (!base) {
+    // Onglet custom : schéma minimal
+    return {title: schemaKey, fields:[
+      {key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
+      {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'remarques',label:'Remarques',type:'textarea',full:true}
+    ], cols:['nom','prenom','pole','remarques']};
+  }
+  // Mapper la clé de schéma → clé de table pour les colonnes custom
+  const tableKey = viewToTableKey(schemaKey);
+  const customDefs = getCustomColDefs(tableKey);
+  // Ajouter les champs custom
+  const fields = [...base.fields, ...customDefs.map(c=>({
+    key:c.key, label:c.label, type:c.type||'text', options:c.options||null, full:false, isCustom:!c.isImportance, isImportance:c.isImportance
+  }))];
+  // Colonnes affichées : respecter l'ordre stocké sinon défaut
+  const storedCols = ADMIN.visibleCols[tableKey];
+  const allDefCols = [...base.cols, ...customDefs.map(c=>c.key)];
+  const cols = storedCols ? storedCols.filter(k=> fields.some(f=>f.key===k)) : allDefCols;
+  return {...base, fields, cols};
+}
+
+function viewToTableKey(viewOrSchema) {
+  const map = {
+    'paye':'paye_','n1':'paye_N1','cdd':'tdb_cdd','cnp':'tdb_cnp','stagiaires':'tdb_stagiaires',
+    'apprentis':'tdb_apprentis','experts':'tdb_experts','dispo':'tdb_dispo',
+    'detach_sort':'tdb_detach_sort','detach-sort':'tdb_detach_sort',
+    'detach_entr':'tdb_detach_entr','detach-entr':'tdb_detach_entr',
+    'mater':'tdb_mater','parental':'tdb_parental','indispo':'tdb_indispo',
+    'tpartiel':'tdb_tpartiel','sejour':'tdb_sejour','tpt':'tdb_tpt','at':'tdb_at'
+  };
+  return map[viewOrSchema] || viewOrSchema;
+}
+
+const VIEW_MAP={
+  paye:          {dbKey:()=>'paye_'+currentMonth, schema:'paye',        showMonths:true,  file:'paye'},
+  n1:            {dbKey:()=>'paye_N1',             schema:'paye',        showMonths:false, file:'paye'},
+  cdd:           {dbKey:()=>'tdb_cdd',             schema:'cdd',         file:'tdb'},
+  cnp:           {dbKey:()=>'tdb_cnp',             schema:'cnp',         file:'tdb'},
+  stagiaires:    {dbKey:()=>'tdb_stagiaires',       schema:'stagiaires',  file:'tdb'},
+  apprentis:     {dbKey:()=>'tdb_apprentis',         schema:'apprentis',   file:'tdb'},
+  experts:       {dbKey:()=>'tdb_experts',           schema:'experts',     file:'tdb'},
+  dispo:         {dbKey:()=>'tdb_dispo',             schema:'dispo',       file:'tdb'},
+  'detach-sort': {dbKey:()=>'tdb_detach_sort',       schema:'detach_sort', file:'tdb'},
+  'detach-entr': {dbKey:()=>'tdb_detach_entr',       schema:'detach_entr', file:'tdb'},
+  mater:         {dbKey:()=>'tdb_mater',             schema:'mater',       file:'tdb'},
+  parental:      {dbKey:()=>'tdb_parental',           schema:'parental',    file:'tdb'},
+  indispo:       {dbKey:()=>'tdb_indispo',            schema:'indispo',     file:'tdb'},
+  tpartiel:      {dbKey:()=>'tdb_tpartiel',           schema:'tpartiel',    file:'tdb'},
+  sejour:        {dbKey:()=>'tdb_sejour',             schema:'sejour',      file:'tdb'},
+  tpt:           {dbKey:()=>'tdb_tpt',                schema:'tpt',         file:'tdb'},
+  at:            {dbKey:()=>'tdb_at',                 schema:'at',          file:'tdb'},
+};
+
+// ═══════════════════════════════════════════════════════════
+// ÉTAT GLOBAL
+// ═══════════════════════════════════════════════════════════
+const DB={};
+MONTHS.forEach(m=>{DB['paye_'+m]=[]});
+DB['paye_N1']=[]; DB['params_paye']=[];
+Object.keys(TDB_MAP_BASE).forEach(k=>{DB[k]=[]});
+
+let nextId=1, currentView='dashboard', currentMonth='JANV';
+let editingId=null, searchQuery='', filterPole='', filterImp='';
+let sortCol=null, sortDir=1, alertFilter='all', adminTab='columns';
+let wbPaye=null, wbTdb=null;
+let dirtyPaye=false, dirtyTdb=false;
+
+// ═══════════════════════════════════════════════════════════
+// EXCEL READ/WRITE
+// ═══════════════════════════════════════════════════════════
+function excelDateToISO(v){
+  if(!v)return'';
+  if(v instanceof Date)return v.toISOString().slice(0,10);
+  if(typeof v==='number'){const d=XLSX.SSF.parse_date_code(v);if(!d)return String(v);return`${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`}
+  if(typeof v==='string'){const c=v.trim();if(/^\d{4}-\d{2}-\d{2}/.test(c))return c.slice(0,10);const d=new Date(c);if(!isNaN(d))return d.toISOString().slice(0,10);}
+  return String(v);
+}
+
+function sheetToRecords(ws, cols, tableKey) {
+  if(!ws) return [];
+  const raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+  if(raw.length < 2) return [];
+  // Detect extra columns beyond base (custom cols added to Excel)
+  const headerRow = raw[0] || [];
+  const customColsAdmin = tableKey ? (ADMIN.customCols[tableKey]||[]) : [];
+  const impEnabled = tableKey ? ADMIN.importanceEnabled[tableKey] : false;
+  // Build extended cols list: base + importance + custom (matched by header label)
+  const extCols = [...cols];
+  if(impEnabled && !extCols.includes('_importance')) {
+    const impIdx = headerRow.findIndex(h=>String(h).toLowerCase()==='importance');
+    if(impIdx >= extCols.length) extCols.push('_importance');
+  }
+  customColsAdmin.forEach(c => {
+    if(!extCols.includes(c.key)) {
+      const idx = headerRow.findIndex(h => String(h).toLowerCase() === c.label.toLowerCase());
+      if(idx >= 0) extCols.push(c.key);
+    }
+  });
+
+  return raw.slice(1).filter(row=>!row.every(c=>c===''||c===null||c===undefined)).map(row=>{
+    const obj={id:nextId++};
+    extCols.forEach((col, j) => {
+      let v = j < row.length ? row[j] : '';
+      if(col.toLowerCase().includes('date')||col.startsWith('fin')||col==='debutStage'||col==='titularisation') v=excelDateToISO(v);
+      else v = v===null||v===undefined?'':String(v).trim();
+      obj[col]=v;
+    });
+    return obj;
+  });
+}
+
+function loadPayeWorkbook(wb){
+  wbPaye=wb;
+  MONTHS.forEach(m=>{DB['paye_'+m]=sheetToRecords(wb.Sheets[m], PAYE_COLS_BASE, 'paye_')});
+  const wsN1=wb.Sheets['N+1'];
+  if(wsN1){
+    const raw=XLSX.utils.sheet_to_json(wsN1,{header:1,defval:''});
+    DB['paye_N1']=raw.slice(2).filter(r=>!r.every(c=>c===''||c===null)).map(row=>{
+      const obj={id:nextId++};
+      N1_COLS.forEach((col,j)=>{let v=j<row.length?row[j]:'';if(col.includes('date'))v=excelDateToISO(v);else v=String(v??'').trim();obj[col]=v});
+      return obj;
+    });
+  }
+  const wsP=wb.Sheets['PARAMETRAGE'];
+  if(wsP){const raw=XLSX.utils.sheet_to_json(wsP,{header:1,defval:''});DB['params_paye']=raw.slice(1).filter(r=>r[0]).map(r=>({id:nextId++,type:String(r[0]||''),bulletins:String(r[1]||''),suivi:String(r[2]||''),pref:String(r[3]||''),newFlag:String(r[4]||'')}));}
+}
+
+function loadTdbWorkbook(wb){
+  wbTdb=wb;
+  Object.entries(TDB_MAP_BASE).forEach(([key,{sheet,cols}])=>{DB[key]=sheetToRecords(wb.Sheets[sheet], cols, key)});
+}
+
+// ═══════════════════════════════════════════════════════════
+// MOTEUR EXCEL — ÉCRITURE DIRECTE XML VIA JSZIP
+// ═══════════════════════════════════════════════════════════
+// On manipule le ZIP/.xlsx directement au niveau XML :
+//  • xl/styles.xml, xl/theme/, _rels/, [Content_Types].xml → JAMAIS touchés
+//  • xl/worksheets/sheetN.xml → valeurs <v> seulement, attributs s= préservés
+//  • xl/sharedStrings.xml → réécrit avec tous les strings (anciens + nouveaux)
+// Résultat : 100% des styles/couleurs/polices/bordures préservés.
+
+// ─── IDB ──────────────────────────────────────────────────
+const IDB_NAME='grh_manager_v2', IDB_STORE='files';
+function openIDB(){return new Promise((res,rej)=>{const r=indexedDB.open(IDB_NAME,1);r.onupgradeneeded=e=>e.target.result.createObjectStore(IDB_STORE);r.onsuccess=e=>res(e.target.result);r.onerror=e=>rej(e.target.error);});}
+async function idbSet(key,val){try{const db=await openIDB();return new Promise((res,rej)=>{const tx=db.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).put(val,key);tx.oncomplete=()=>res();tx.onerror=e=>rej(e.target.error);});}catch(e){}}
+async function idbGet(key){try{const db=await openIDB();return new Promise((res,rej)=>{const tx=db.transaction(IDB_STORE,'readonly');const r=tx.objectStore(IDB_STORE).get(key);r.onsuccess=()=>res(r.result);r.onerror=e=>rej(e.target.error);});}catch(e){return null;}}
+async function idbDel(key){try{const db=await openIDB();return new Promise(res=>{const tx=db.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).delete(key);tx.oncomplete=()=>res();});}catch(e){}}
+
+// ─── VARIABLES FICHIERS ────────────────────────────────────
+let fileNamePaye=null, fileNameTdb=null;
+let fileHandlePaye=null, fileHandleTdb=null;
+let zipPaye=null, zipTdb=null;  // JSZip instances — conservées entre sauvegardes
+
+// ─── XML HELPERS ──────────────────────────────────────────
+function xmlEsc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');}
+
+function idxToCol(n){
+  let s='';n++;
+  while(n>0){const r=(n-1)%26;s=String.fromCharCode(65+r)+s;n=Math.floor((n-1)/26);}
+  return s;
+}
+
+// Lire les sharedStrings depuis XML → tableau de chaînes
+function parseSharedStrings(xml){
+  const strings=[];
+  const re=/<si>([\s\S]*?)<\/si>/g;
+  let m;
+  while((m=re.exec(xml))!==null){
+    const parts=[];let m2;
+    const tr=/<t(?:[^>]*)>([\s\S]*?)<\/t>/g;
+    while((m2=tr.exec(m[1]))!==null){
+      parts.push(m2[1]
+        .replace(/&#xD;/g,'').replace(/&#xA;/g,'\n')
+        .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>')
+        .replace(/&quot;/g,'"').replace(/&apos;/g,"'"));
+    }
+    strings.push(parts.join(''));
+  }
+  return strings;
+}
+
+// Construire XML sharedStrings depuis tableau
+function buildSSXml(strings){
+  const sis=strings.map(s=>`<si><t>${xmlEsc(s)}</t></si>`).join('');
+  return`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${strings.length}" uniqueCount="${strings.length}">${sis}</sst>`;
+}
+
+// Obtenir ou ajouter une chaîne → retourne son index
+function getOrAdd(val, strings){
+  const s=String(val);
+  const idx=strings.indexOf(s);
+  if(idx>=0) return idx;
+  strings.push(s);
+  return strings.length-1;
+}
+
+// Extraire les styles par colonne depuis la ligne template (row 2 ou 3)
+function extractColStyles(sheetXml, nCols, templateRowNum){
+  const rn = templateRowNum||2;
+  const rowRe = new RegExp(`<row r="${rn}"([^>]*)>([\\s\\S]*?)<\\/row>`);
+  const row = sheetXml.match(rowRe);
+  const colStyles = {};
+  if(row){
+    const cr = new RegExp(`<c r="([A-Z]+)${rn}"([^>]*)(?:\\/>|>[\\s\\S]*?<\\/c>)`, 'g');
+    let m;
+    while((m=cr.exec(row[2]))!==null){
+      const sM=m[2].match(/s="(\d+)"/);
+      colStyles[m[1]]={s:sM?sM[1]:'0'};
+    }
+  }
+  // Garantir que toutes les colonnes ont un style
+  for(let i=0;i<nCols;i++){
+    const col=idxToCol(i);
+    if(!colStyles[col]) colStyles[col]={s:'0'};
+  }
+  return colStyles;
+}
+
+// Réécrire les données d'une feuille sans toucher les styles
+// dataStartRow = première ligne de données (après en-têtes)
+// strings = tableau partagé (MÊME référence pour toutes les feuilles d'un workbook)
+function rewriteSheetXml(sheetXml, records, colKeys, dataStartRow, strings){
+  const nCols=colKeys.length;
+  const colLetters=colKeys.map((_,i)=>idxToCol(i));
+  const colStyles=extractColStyles(sheetXml, nCols, dataStartRow);
+
+  // Récupérer les attributs de style de la ligne template (sans r= et spans=)
+  const rowRe=new RegExp(`<row r="${dataStartRow}"([^>]*)>`);
+  const rowM=sheetXml.match(rowRe);
+  const baseRowAttrs=rowM
+    ? rowM[1].replace(/\s*r="\d+"/,'').replace(/\s*spans="[^"]*"/,'')
+    : '';
+
+  // Construire les nouvelles lignes
+  const newRowsXml=records.map((rec,ri)=>{
+    const rowNum=dataStartRow+ri;
+    const cells=colLetters.map((col,ci)=>{
+      const s=colStyles[col]?.s||'0';
+      const ref=col+rowNum;
+      const raw=rec[colKeys[ci]];
+
+      if(raw===null||raw===undefined||raw==='')
+        return`<c r="${ref}" s="${s}"/>`;
+
+      // Date ISO → numéro de série Excel
+      if(typeof raw==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(raw)){
+        const d=new Date(raw+'T00:00:00');
+        if(!isNaN(d)){
+          // Numéro de série Excel (date 1900-based, avec bug 1900 intentionnel de Excel)
+          const ms=d.getTime()-new Date(1899,11,31).getTime();
+          const serial=Math.round(ms/86400000)+1;
+          return`<c r="${ref}" s="${s}" t="n"><v>${serial}</v></c>`;
+        }
+      }
+      // Nombre
+      if(typeof raw==='number')
+        return`<c r="${ref}" s="${s}" t="n"><v>${raw}</v></c>`;
+
+      // Chaîne → sharedStrings
+      const idx=getOrAdd(String(raw),strings);
+      return`<c r="${ref}" s="${s}" t="s"><v>${idx}</v></c>`;
+    }).join('');
+
+    return`<row r="${rowNum}" spans="1:${nCols}"${baseRowAttrs}>${cells}</row>`;
+  }).join('');
+
+  // Supprimer toutes les lignes de données du XML original
+  const cleaned=sheetXml.replace(/<row r="(\d+)"[^>]*>[\s\S]*?<\/row>/g,(match,r)=>{
+    return parseInt(r)>=dataStartRow?'':match;
+  });
+
+  // Injecter les nouvelles lignes
+  let result=cleaned.replace('</sheetData>',newRowsXml+'</sheetData>');
+
+  // Mettre à jour la dimension
+  const lastCol=idxToCol(nCols-1);
+  const lastRow=dataStartRow-1+records.length;
+  result=result.replace(/<dimension ref="[^"]*"\/>/, `<dimension ref="A1:${lastCol}${lastRow}"/>`);
+  return result;
+}
+
+// Récupérer le mapping nom d'onglet → chemin XML dans le ZIP
+async function getSheetPathMap(zip){
+  const wbXml=await zip.files['xl/workbook.xml'].async('text');
+  const relsXml=await zip.files['xl/_rels/workbook.xml.rels'].async('text');
+  const nameToRid={}, relMap={};
+  let m;
+  const sr=/<sheet name="([^"]*)" sheetId="(\d+)" r:id="([^"]*)"/g;
+  const rr=/<Relationship Id="([^"]*)"[^>]*Target="([^"]*)"/g;
+  while((m=sr.exec(wbXml))!==null) nameToRid[m[1]]=m[3];
+  while((m=rr.exec(relsXml))!==null) relMap[m[1]]=m[2];
+  const nameToPath={};
+  Object.entries(nameToRid).forEach(([name,rid])=>{
+    const target=relMap[rid];
+    if(target) nameToPath[name]=target.startsWith('/')?target.slice(1):'xl/'+target;
+  });
+  return nameToPath;
+}
+
+// ─── COLS EFFECTIVES ──────────────────────────────────────
+function getEffectiveColsForSave(tableKey){
+  const base=tableKey==='paye_'?[...PAYE_COLS_BASE]:tableKey==='paye_N1'?[...N1_COLS]:TDB_MAP_BASE[tableKey]?[...TDB_MAP_BASE[tableKey].cols]:[];
+  const custom=(ADMIN.customCols[tableKey]||[]).map(c=>c.key);
+  if(ADMIN.importanceEnabled[tableKey]) base.push('_importance');
+  return [...base,...custom];
+}
+
+// ─── SAUVEGARDE PRINCIPALE ────────────────────────────────
+async function saveAllFiles(){
+  const btn=document.getElementById('save-all-btn');
+  btn.disabled=true; btn.textContent='⏳ Enregistrement…';
+  let ok=true;
+
+  if(wbPaye&&dirtyPaye){
+    if(!zipPaye){notify('⚠ Rechargez le Cahier de Paye');ok=false;}
+    else{
+      try{
+        const nameToPath=await getSheetPathMap(zipPaye);
+        // Charger sharedStrings UNE SEULE FOIS pour tout le workbook
+        const ssXml=await zipPaye.files['xl/sharedStrings.xml'].async('text');
+        const strings=parseSharedStrings(ssXml);
+
+        // Réécrire tous les onglets mois
+        for(const month of MONTHS){
+          const path=nameToPath[month];
+          if(!path||!zipPaye.files[path]) continue;
+          const xml=await zipPaye.files[path].async('text');
+          zipPaye.file(path, rewriteSheetXml(xml, DB['paye_'+month], getEffectiveColsForSave('paye_'), 2, strings));
+        }
+        // N+1 (en-têtes sur 2 lignes → données à partir de la ligne 3)
+        const n1path=nameToPath['N+1'];
+        if(n1path&&zipPaye.files[n1path]){
+          const xml=await zipPaye.files[n1path].async('text');
+          zipPaye.file(n1path, rewriteSheetXml(xml, DB['paye_N1'], getEffectiveColsForSave('paye_N1'), 3, strings));
+        }
+        // Réécrire sharedStrings avec l'ensemble complet
+        zipPaye.file('xl/sharedStrings.xml', buildSSXml(strings));
+
+        const buf=await zipPaye.generateAsync({type:'arraybuffer',compression:'DEFLATE',compressionOptions:{level:6}});
+        const saved=await writeFile(buf, fileHandlePaye, fileNamePaye||'Modèle_cahier_de_paye_.xlsx', 'paye');
+        if(saved){dirtyPaye=false;await idbSet('paye_buf',buf);}else ok=false;
+      }catch(e){console.error(e);notify('⚠ Paye: '+e.message);ok=false;}
+    }
+  }
+
+  if(wbTdb&&dirtyTdb){
+    if(!zipTdb){notify('⚠ Rechargez le Tableau de Bord');ok=false;}
+    else{
+      try{
+        const nameToPath=await getSheetPathMap(zipTdb);
+        const ssXml=await zipTdb.files['xl/sharedStrings.xml'].async('text');
+        const strings=parseSharedStrings(ssXml);
+
+        for(const[key,{sheet}] of Object.entries(TDB_MAP_BASE)){
+          const path=nameToPath[sheet];
+          if(!path||!zipTdb.files[path]) continue;
+          const xml=await zipTdb.files[path].async('text');
+          zipTdb.file(path, rewriteSheetXml(xml, DB[key], getEffectiveColsForSave(key), 2, strings));
+        }
+        zipTdb.file('xl/sharedStrings.xml', buildSSXml(strings));
+
+        const buf=await zipTdb.generateAsync({type:'arraybuffer',compression:'DEFLATE',compressionOptions:{level:6}});
+        const saved=await writeFile(buf, fileHandleTdb, fileNameTdb||'Tableau_de_bord_.xlsx', 'tdb');
+        if(saved){dirtyTdb=false;await idbSet('tdb_buf',buf);}else ok=false;
+      }catch(e){console.error(e);notify('⚠ TDB: '+e.message);ok=false;}
+    }
+  }
+
+  btn.disabled=false; btn.textContent='💾 Enregistrer';
+  notify(ok?'✓ Fichiers sauvegardés (styles préservés)':'⚠ Sauvegarde partielle');
+}
+
+// Écrire un ArrayBuffer dans le fichier original ou le télécharger
+async function writeFile(buf, handle, defaultName, which){
+  const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+
+  // 1. File System Access — écriture directe dans le fichier source
+  if(handle&&handle.createWritable){
+    try{
+      const w=await handle.createWritable();
+      await w.write(blob); await w.close();
+      return true;
+    }catch(e){
+      // Handle expiré (page rechargée) → demander de pointer vers le fichier
+      console.warn('Handle expired:', e.message);
+    }
+  }
+
+  // 2. showSaveFilePicker avec nom pré-rempli (Chrome/Edge sans handle valide)
+  if(window.showSaveFilePicker){
+    try{
+      const h=await window.showSaveFilePicker({
+        suggestedName: defaultName,
+        types:[{description:'Excel (.xlsx)',accept:{'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['.xlsx']}}]
+      });
+      const w=await h.createWritable(); await w.write(blob); await w.close();
+      // Conserver le nouveau handle
+      if(which==='paye') fileHandlePaye=h; else fileHandleTdb=h;
+      return true;
+    }catch(e){
+      if(e.name==='AbortError') return false; // Annulé par l'utilisateur
+    }
+  }
+
+  // 3. Dernier recours : téléchargement
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=defaultName; a.click();
+  URL.revokeObjectURL(a.href);
+  return true;
+}
+
+// ─── CHARGEMENT FICHIERS ──────────────────────────────────
+async function tryAutoReload(){
+  const payeMeta=JSON.parse(localStorage.getItem('grh_file_paye')||'null');
+  const tdbMeta=JSON.parse(localStorage.getItem('grh_file_tdb')||'null');
+  let loaded=false;
+
+  if(payeMeta){
+    const buf=await idbGet('paye_buf');
+    if(buf){
+      try{
+        wbPaye=XLSX.read(buf,{type:'array',cellDates:true});
+        zipPaye=await JSZip.loadAsync(buf);
+        fileNamePaye=payeMeta.name; fileHandlePaye=null;
+        loadPayeWorkbook(wbPaye); markLoaded('paye',payeMeta.name); loaded=true;
+      }catch(e){console.warn('Auto-reload paye',e);}
+    }
+  }
+  if(tdbMeta){
+    const buf=await idbGet('tdb_buf');
+    if(buf){
+      try{
+        wbTdb=XLSX.read(buf,{type:'array',cellDates:true});
+        zipTdb=await JSZip.loadAsync(buf);
+        fileNameTdb=tdbMeta.name; fileHandleTdb=null;
+        loadTdbWorkbook(wbTdb); markLoaded('tdb',tdbMeta.name); loaded=true;
+      }catch(e){console.warn('Auto-reload tdb',e);}
+    }
+  }
+
+  if(loaded){
+    enableSaveBtn(); updateBadges(); renderView();
+    const banner=document.getElementById('reload-banner');
+    if(banner){
+      banner.style.display='flex';
+      const n=document.getElementById('reload-names');
+      if(n) n.textContent=[payeMeta?.name,tdbMeta?.name].filter(Boolean).join(' + ');
+    }
+  } else { renderView(); }
+}
+
+async function pickFile(which){
+  const readAndLoad=async(buf,name,handle)=>{
+    const wb=XLSX.read(buf,{type:'array',cellDates:true});
+    const zip=await JSZip.loadAsync(buf);
+    if(which==='paye'){
+      fileHandlePaye=handle||null; fileNamePaye=name;
+      zipPaye=zip; wbPaye=wb; loadPayeWorkbook(wb);
+    }else{
+      fileHandleTdb=handle||null; fileNameTdb=name;
+      zipTdb=zip; wbTdb=wb; loadTdbWorkbook(wb);
+    }
+    await idbSet(which+'_buf',buf);
+    localStorage.setItem('grh_file_'+which,JSON.stringify({name,savedAt:Date.now()}));
+    markLoaded(which,name); enableSaveBtn(); updateBadges(); renderView();
+    const b=document.getElementById('reload-banner'); if(b) b.style.display='none';
+    notify('✓ '+name+' chargé et mémorisé');
+  };
+
+  if(window.showOpenFilePicker){
+    try{
+      const[handle]=await window.showOpenFilePicker({
+        types:[{description:'Excel',accept:{'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['.xlsx']}}],
+        multiple:false
+      });
+      const file=await handle.getFile();
+      await readAndLoad(await file.arrayBuffer(),file.name,handle);
+    }catch(e){if(e.name!=='AbortError') notify('⚠ '+e.message);}
+  }else{
+    const inp=document.createElement('input'); inp.type='file'; inp.accept='.xlsx';
+    inp.onchange=async()=>{const file=inp.files[0];if(!file)return;await readAndLoad(await file.arrayBuffer(),file.name,null);};
+    inp.click();
+  }
+}
+
+function markLoaded(which,name){
+  const btn=document.getElementById('fb-'+which); const lbl=document.getElementById('fb-'+which+'-label');
+  if(btn) btn.classList.add('loaded');
+  if(lbl) lbl.textContent=name.length>26?name.slice(0,24)+'…':name;
+}
+function enableSaveBtn(){const btn=document.getElementById('save-all-btn');if(btn)btn.disabled=!(wbPaye||wbTdb);}
+
+async function forgetFiles(){
+  await idbDel('paye_buf'); await idbDel('tdb_buf');
+  localStorage.removeItem('grh_file_paye'); localStorage.removeItem('grh_file_tdb');
+  wbPaye=null; wbTdb=null; zipPaye=null; zipTdb=null;
+  fileHandlePaye=null; fileHandleTdb=null; fileNamePaye=null; fileNameTdb=null;
+  ['paye','tdb'].forEach(w=>{
+    const b=document.getElementById('fb-'+w); if(b) b.classList.remove('loaded');
+    const l=document.getElementById('fb-'+w+'-label'); if(l) l.textContent=w==='paye'?'Cahier de Paye…':'Tableau de Bord…';
+  });
+  const sb=document.getElementById('save-all-btn'); if(sb) sb.disabled=true;
+  notify('✓ Fichiers mémorisés effacés');
+}
+
+async function forgetOneFile(which){
+  await idbDel(which+'_buf');
+  localStorage.removeItem('grh_file_'+which);
+  if(which==='paye'){wbPaye=null;zipPaye=null;fileHandlePaye=null;fileNamePaye=null;}
+  else{wbTdb=null;zipTdb=null;fileHandleTdb=null;fileNameTdb=null;}
+  const b=document.getElementById('fb-'+which); if(b) b.classList.remove('loaded');
+  const l=document.getElementById('fb-'+which+'-label'); if(l) l.textContent=which==='paye'?'Cahier de Paye…':'Tableau de Bord…';
+  const sb=document.getElementById('save-all-btn'); if(sb&&!wbPaye&&!wbTdb) sb.disabled=true;
+  notify('✓ Fichier '+which+' effacé');
+  if(adminTab==='settings') setAdminTab('settings');
+}
+
+function markDirty(which){
+  if(which==='paye')dirtyPaye=true;else dirtyTdb=true;
+  const btn=document.getElementById('save-all-btn');if(!btn)return;
+  btn.disabled=false;btn.textContent='💾 Enregistrer*';
+  btn.style.background='var(--orange)';
+  setTimeout(()=>{btn.style.background='';btn.textContent='💾 Enregistrer';},200);
+}
+
+// ═══════════════════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════════════════
+function setView(view,el){
+  currentView=view;searchQuery='';filterPole='';filterImp='';sortCol=null;
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  if(el)el.classList.add('active');
+  renderView();
+}
+
+function renderView(){
+  const c=document.getElementById('content');
+  const tt=document.getElementById('topbar-title');
+  const te=document.getElementById('topbar-extra');
+  const ba=document.getElementById('btn-add');
+  const be=document.getElementById('btn-export');
+
+  if(currentView==='dashboard'){tt.textContent='Tableau de bord';te.innerHTML='';ba.style.display='none';be.style.display='none';c.innerHTML=renderDashboard();return;}
+  if(currentView==='params-paye'){tt.textContent='Paramétrage Paye';te.innerHTML='';ba.style.display='none';be.style.display='none';c.innerHTML=renderParamsTable();return;}
+  if(currentView==='admin'){tt.textContent='⚙ Administration';te.innerHTML='';ba.style.display='none';be.style.display='none';c.innerHTML=renderAdminPage();setTimeout(initAdminDrag,50);return;}
+
+  const vm=VIEW_MAP[currentView];if(!vm)return;
+  // For custom tabs, use their own schema key or fallback
+  const schemaKey = vm.schema || 'paye';
+  const schema=getSchema(schemaKey);if(!schema)return;
+  tt.textContent=schema.title;ba.style.display='flex';be.style.display='flex';
+  if(vm.showMonths){te.innerHTML=`<div style="display:flex;gap:3px;flex-wrap:wrap">${MONTHS.map(m=>`<div class="month-tab ${m===currentMonth?'active':''}" onclick="setMonth('${m}')">${m}</div>`).join('')}</div>`;}
+  else te.innerHTML='';
+  c.innerHTML=renderTable(vm, schema);
+}
+
+function setMonth(m){
+  currentMonth=m;
+  document.querySelectorAll('.month-tab').forEach(t=>t.classList.toggle('active',t.textContent===m));
+  const vm=VIEW_MAP[currentView];
+  const schema=getSchema(vm.schema||'paye');
+  const tb=document.getElementById('table-body');
+  if(tb)tb.innerHTML=renderRows(vm,schema);
+  updateCount(vm);
+}
+
+// ═══════════════════════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════════════════════
+function collectAllAlerts(today){
+  const alerts=[];const horizon=ADMIN.settings.alertHorizon||180;
+  const diff=d=>{if(!d||d==='')return null;const x=new Date(d);return isNaN(x)?null:Math.round((x-today)/86400000)};
+  function push(source,view,id,nom,prenom,pole,label,date,d,imp){
+    if(d===null||d>=horizon)return;
+    alerts.push({source,view,id,nom:nom||'',prenom:prenom||'',pole:pole||'',label,date,diff:d,imp:imp||'Normal',
+      urgency:d<0?'expired':d<30?'critical':d<90?'warning':d<180?'soon':'info'});
+  }
+  DB['tdb_dispo'].forEach(r=>{push('Disponibilités','dispo',r.id,r.nom,r.prenom,r.pole,'Fin dispo',r.dateFin,diff(r.dateFin),r._importance);const d5=diff(r.fin5ans);if(d5!==null&&d5<90)push('Disponibilités','dispo',r.id,r.nom,r.prenom,r.pole,'Limite 5 ans',r.fin5ans,d5,r._importance);});
+  DB['tdb_cdd'].forEach(r=>push('CDD','cdd',r.id,r.nom,r.prenom,r.pole,'Fin CDD',r.dateFin,diff(r.dateFin),r._importance));
+  DB['tdb_cnp'].forEach(r=>push('CNP','cnp',r.id,r.nom,r.prenom,r.pole,'Fin CNP',r.dateFin,diff(r.dateFin),r._importance));
+  DB['tdb_apprentis'].forEach(r=>push('Apprentis','apprentis',r.id,r.nom,r.prenom,r.pole,'Fin apprentissage',r.dateFin,diff(r.dateFin),r._importance));
+  DB['tdb_experts'].forEach(r=>push('Experts','experts',r.id,r.nom,r.prenom,r.pole,'Fin position',r.dateFinPos,diff(r.dateFinPos),r._importance));
+  DB['tdb_detach_sort'].forEach(r=>push('Détach. sortants','detach-sort',r.id,r.nom,r.prenom,r.pole,'Fin détachement',r.dateFin,diff(r.dateFin),r._importance));
+  DB['tdb_detach_entr'].forEach(r=>push('Détach. entrants','detach-entr',r.id,r.nom,r.prenom,r.pole,'Fin détachement',r.dateFin,diff(r.dateFin),r._importance));
+  DB['tdb_stagiaires'].forEach(r=>{push('Stagiaires','stagiaires',r.id,r.nom,r.prenom,r.pole,'Titularisation',r.titularisation,diff(r.titularisation),r._importance);const dE=diff(r.dateEnvoiECS);if(dE!==null&&dE<60&&!r.dateReceptionECS)push('Stagiaires','stagiaires',r.id,r.nom,r.prenom,r.pole,'Envoi ECS',r.dateEnvoiECS,dE,r._importance);});
+  DB['tdb_indispo'].forEach(r=>{push('Indispo phys.','indispo',r.id,r.nom,r.prenom,r.pole,'Fin CLM/CLD',r.dateFin,diff(r.dateFin),r._importance);push('Indispo phys.','indispo',r.id,r.nom,r.prenom,r.pole,'Relance agent',r.dateRelance,diff(r.dateRelance),r._importance);});
+  DB['tdb_tpartiel'].forEach(r=>push('Temps partiel','tpartiel',r.id,r.nom,r.prenom,r.pole,'Fin TP',r.dateFin,diff(r.dateFin),r._importance));
+  DB['tdb_tpt'].forEach(r=>push('TPT','tpt',r.id,r.nom,r.prenom,r.pole,'Fin TPT',r.dateFin,diff(r.dateFin),r._importance));
+  DB['tdb_parental'].forEach(r=>push('Congé parental','parental',r.id,r.nom,r.prenom,r.pole,'Fin congé',r.dateFin,diff(r.dateFin),r._importance));
+  DB['tdb_sejour'].forEach(r=>push('Cartes séjour','sejour',r.id,r.nom,r.prenom,r.pole,'Expiration carte',r.dateExpiration,diff(r.dateExpiration),r._importance));
+  const ord={expired:0,critical:1,warning:2,soon:3,info:4};
+  return alerts.filter(a=>a.diff!==null).sort((a,b)=>ord[a.urgency]-ord[b.urgency]||a.diff-b.diff);
+}
+
+const KPI_DEFS={
+  dispo:{label:'Disponibilités',db:'tdb_dispo',color:'blue',sub:'agents hors organisme'},
+  cdd:{label:'CDD',db:'tdb_cdd',color:'orange',sub:'contrats en cours'},
+  stagiaires:{label:'Stagiaires',db:'tdb_stagiaires',color:'green',sub:'en cours'},
+  apprentis:{label:'Apprentis',db:'tdb_apprentis',color:'purple',sub:'en cours'},
+  at:{label:'Accidents travail',db:'tdb_at',color:'red',sub:'dossiers'},
+  mater:{label:'Maternités',db:'tdb_mater',color:'yellow',sub:'en cours'},
+  tpartiel:{label:'Temps partiels',db:'tdb_tpartiel',color:'blue',sub:'en cours'},
+  paye:{label:()=>'Paye '+currentMonth,db:()=>'paye_'+currentMonth,color:'green',sub:'mouvements'},
+};
+
+function renderDashboard(){
+  const today=new Date();
+  const allAlerts=collectAllAlerts(today);
+  const nExp=allAlerts.filter(a=>a.urgency==='expired').length;
+  const nCrit=allAlerts.filter(a=>a.urgency==='critical').length;
+  const nWarn=allAlerts.filter(a=>a.urgency==='warning').length;
+  const nSoon=allAlerts.filter(a=>a.urgency==='soon'||a.urgency==='info').length;
+  const srcTags={'Disponibilités':'chip-blue','CDD':'chip-orange','CNP':'chip-orange','Apprentis':'chip-purple','Experts':'chip-blue','Détach. sortants':'chip-blue','Détach. entrants':'chip-blue','Stagiaires':'chip-green','Indispo phys.':'chip-red','Temps partiel':'chip-gray','TPT':'chip-gray','Congé parental':'chip-gray','Cartes séjour':'chip-orange'};
+  const srcCount={};allAlerts.forEach(a=>{srcCount[a.source]=(srcCount[a.source]||0)+1});
+  const srcE=Object.entries(srcCount).sort((a,b)=>b[1]-a[1]);const maxSrc=srcE[0]?srcE[0][1]:1;
+  const poleCount={};DB['tdb_dispo'].forEach(d=>{poleCount[d.pole]=(poleCount[d.pole]||0)+1});
+  const poleE=Object.entries(poleCount).sort((a,b)=>b[1]-a[1]);const maxPole=poleE[0]?poleE[0][1]:1;
+
+  // KPIs
+  const kpiOrder=ADMIN.dashConfig.kpiOrder||Object.keys(KPI_DEFS);
+  let kpiHtml=kpiOrder.map(k=>{
+    const d=KPI_DEFS[k];if(!d)return'';
+    const db=typeof d.db==='function'?d.db():d.db;
+    const label=typeof d.label==='function'?d.label():d.label;
+    const n=(DB[db]||[]).length;
+    return`<div class="kpi-card ${d.color}" onclick="setView('${k==='paye'?'paye':k}',document.querySelector('[data-view=\\'${k==='paye'?'paye':k}\\']'))"><div class="kpi-label">${label}</div><div class="kpi-value">${n}</div><div class="kpi-sub">${d.sub}</div></div>`;
+  }).join('');
+
+  // Widgets
+  const widgets=ADMIN.dashConfig.widgets.filter(w=>w.enabled);
+  let widgetRows='';
+  // Group widgets into rows by their cols
+  let rowHtml='';let rowCols=0;
+  widgets.forEach((w,i)=>{
+    const wContent=renderWidget(w,allAlerts,nExp,nCrit,nWarn,nSoon,srcTags,srcE,maxSrc,poleE,maxPole);
+    rowHtml+=`<div style="grid-column:span ${w.cols||1}">${wContent}</div>`;
+    rowCols+=(w.cols||1);
+    const next=widgets[i+1];
+    if(!next||(rowCols+(next.cols||1))>2){widgetRows+=`<div class="dash-row" style="grid-template-columns:repeat(2,1fr)">${rowHtml}</div>`;rowHtml='';rowCols=0;}
+  });
+
+  return`<div id="dashboard">
+  <div class="kpi-grid">${kpiHtml}</div>
+  <div class="dash-widgets">${widgetRows}</div>
+</div>`;
+}
+
+function renderWidget(w,allAlerts,nExp,nCrit,nWarn,nSoon,srcTags,srcE,maxSrc,poleE,maxPole){
+  if(w.id==='alerts'){
+    return`<div class="dash-card">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <div class="dash-card-title" style="margin-bottom:0;flex:1">Alertes & Dates butoir</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <div class="alert-kpi ${nExp>0?'ak-red':'ak-dim'}" onclick="setAlertFilter('expired')"><span class="ak-val">${nExp}</span><span class="ak-lbl">Dépassées</span></div>
+          <div class="alert-kpi ${nCrit>0?'ak-orange':'ak-dim'}" onclick="setAlertFilter('critical')"><span class="ak-val">${nCrit}</span><span class="ak-lbl">Critiques</span></div>
+          <div class="alert-kpi ${nWarn>0?'ak-yellow':'ak-dim'}" onclick="setAlertFilter('warning')"><span class="ak-val">${nWarn}</span><span class="ak-lbl">Attention</span></div>
+          <div class="alert-kpi ak-blue" onclick="setAlertFilter('soon')"><span class="ak-val">${nSoon}</span><span class="ak-lbl">À surveiller</span></div>
+          <div class="alert-kpi ak-all" onclick="setAlertFilter('all')"><span class="ak-val">${allAlerts.length}</span><span class="ak-lbl">Toutes</span></div>
+        </div>
+      </div>
+      <div id="alerts-list">${renderAlertsList(allAlerts,srcTags)}</div>
+    </div>`;
+  }
+  if(w.id==='poleStats'){
+    return`<div class="dash-card"><div class="dash-card-title">Dispos par pôle</div>
+      ${poleE.length===0?'<div style="color:var(--text-muted);font-size:11px">Chargez le Tableau de Bord</div>':
+        poleE.map(([p,n])=>`<div class="stat-row"><div style="flex:1;font-size:12px">${p}</div><div class="stat-bar-wrap"><div class="stat-bar" style="width:${Math.round(n/maxPole*100)}%"></div></div><div class="stat-val">${n}</div></div>`).join('')}
+    </div>`;
+  }
+  if(w.id==='srcStats'){
+    return`<div class="dash-card"><div class="dash-card-title">Alertes par source</div>
+      ${srcE.length===0?'<div style="color:var(--text-muted);font-size:11px">Aucune alerte</div>':
+        srcE.map(([s,n])=>`<div class="stat-row"><span class="chip ${srcTags[s]||'chip-gray'}" style="font-size:9px;min-width:85px;text-align:center">${s}</span><div class="stat-bar-wrap"><div class="stat-bar" style="width:${Math.round(n/maxSrc*100)}%"></div></div><div class="stat-val">${n}</div></div>`).join('')}
+    </div>`;
+  }
+  // Recent records widgets
+  const recentMap={recentPaye:'paye_'+currentMonth,recentCdd:'tdb_cdd',recentDispo:'tdb_dispo',recentAt:'tdb_at',recentMater:'tdb_mater'};
+  const viewMap2={recentPaye:'paye',recentCdd:'cdd',recentDispo:'dispo',recentAt:'at',recentMater:'mater'};
+  const schemaMap={recentPaye:'paye',recentCdd:'cdd',recentDispo:'dispo',recentAt:'at',recentMater:'mater'};
+  if(recentMap[w.id]){
+    let data=[...(DB[recentMap[w.id]]||[])];
+    if(w.filterImp)data=data.filter(r=>r._importance===w.filterImp);
+    data=data.slice(-Math.min(w.count||5,data.length)).reverse();
+    const schema=SCHEMAS_BASE[schemaMap[w.id]];
+    const dispCols=(schema?schema.cols.slice(0,4):[]);
+    const impEnabled=ADMIN.importanceEnabled[viewToTableKey(schemaMap[w.id])];
+    return`<div class="dash-card">
+      <div class="dash-card-title">${w.title}
+        <span style="margin-left:auto;font-size:10px;color:var(--text-dim);font-weight:400">${data.length} entrée${data.length!==1?'s':''}</span>
+        <span style="cursor:pointer;font-size:11px;color:var(--accent)" onclick="setView('${viewMap2[w.id]}',document.querySelector('[data-view=\\'${viewMap2[w.id]}\\']'))">→ Voir tout</span>
+      </div>
+      ${data.length===0?`<div style="color:var(--text-muted);font-size:11px;padding:8px 0">Aucune donnée${w.filterImp?' pour importance "'+w.filterImp+'"':''}</div>`:`
+      <div style="overflow-x:auto">
+        <table class="recent-table">
+          <thead><tr>${impEnabled?'<th>Imp.</th>':''} ${dispCols.map(c=>{const f=schema.fields.find(f=>f.key===c);return`<th>${f?f.label:c}</th>`}).join('')}</tr></thead>
+          <tbody>${data.map(r=>`<tr onclick="goToRecord('${viewMap2[w.id]}',${r.id})" style="cursor:pointer">${impEnabled?`<td>${renderImpChip(r._importance)}</td>`:''} ${dispCols.map(c=>`<td title="${r[c]||''}">${renderCell(c,r[c])}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table>
+      </div>`}
+    </div>`;
+  }
+  return`<div class="dash-card"><div class="dash-card-title">${w.title}</div><div style="color:var(--text-muted);font-size:11px">Widget non reconnu</div></div>`;
+}
+
+function renderAlertsList(allAlerts,srcTags){
+  const filtered=alertFilter==='all'?allAlerts:alertFilter==='soon'?allAlerts.filter(a=>a.urgency==='soon'||a.urgency==='info'):allAlerts.filter(a=>a.urgency===alertFilter);
+  if(!filtered.length)return`<div class="empty-state" style="padding:20px 0"><div class="es-icon">✓</div><p>Aucune alerte</p></div>`;
+  const uc={expired:{c:'var(--red)',dot:'red',l:'Dépassée'},critical:{c:'var(--orange)',dot:'orange',l:'Critique'},warning:{c:'var(--yellow)',dot:'yellow',l:'Attention'},soon:{c:'var(--accent)',dot:'blue',l:'À surveiller'},info:{c:'var(--text-muted)',dot:'',l:'Info'}};
+  let html='';let lastU=null;
+  filtered.forEach(a=>{
+    if(a.urgency!==lastU){const u=uc[a.urgency];html+=`<div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${u.c};padding:7px 0 3px;${lastU?'border-top:1px solid var(--border);margin-top:3px':''}">${u.l}</div>`;lastU=a.urgency;}
+    const u=uc[a.urgency];const dl=a.diff<0?`Dépassée ${-a.diff}j`:a.diff===0?"Auj.":`${a.diff}j`;
+    const dt=a.date?new Date(a.date).toLocaleDateString('fr-FR'):'—';
+    const impEnabled=ADMIN.importanceEnabled[viewToTableKey(a.view)];
+    html+=`<div class="alert-item" onclick="goToRecord('${a.view}',${a.id})">
+      <div class="alert-dot ${u.dot}"></div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+          <strong style="font-size:12px">${a.nom} ${a.prenom}</strong>
+          <span class="chip ${(srcTags||{})[a.source]||'chip-gray'}" style="font-size:9px">${a.source}</span>
+          ${impEnabled&&a.imp&&a.imp!=='Normal'?renderImpChip(a.imp):''}
+          <span style="font-size:11px;color:var(--text-muted)">${a.label}</span>
+        </div>
+        <div style="font-size:10.5px;color:var(--text-dim)">${a.pole}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-family:var(--mono);font-size:10.5px;color:var(--text-muted)">${dt}</div>
+        <div style="font-size:10.5px;font-weight:600;color:${u.c}">${dl}</div>
+      </div>
+    </div>`;
+  });
+  return html;
+}
+
+function renderImpChip(v){
+  if(!v||v==='Normal')return`<span class="imp-chip imp-normal">Normal</span>`;
+  if(v==='Moyenne')return`<span class="imp-chip imp-moyenne">Moyenne</span>`;
+  if(v==='Haute')return`<span class="imp-chip imp-haute">Haute</span>`;
+  if(v==='Urgente')return`<span class="imp-chip imp-urgente">● Urgente</span>`;
+  return`<span class="imp-chip imp-normal">${v}</span>`;
+}
+
+function setAlertFilter(f){alertFilter=f;const today=new Date();const all=collectAllAlerts(today);const st={'Disponibilités':'chip-blue','CDD':'chip-orange','CNP':'chip-orange','Apprentis':'chip-purple','Experts':'chip-blue','Détach. sortants':'chip-blue','Détach. entrants':'chip-blue','Stagiaires':'chip-green','Indispo phys.':'chip-red','Temps partiel':'chip-gray','TPT':'chip-gray','Congé parental':'chip-gray','Cartes séjour':'chip-orange'};const el=document.getElementById('alerts-list');if(el)el.innerHTML=renderAlertsList(all,st);}
+function goToRecord(view,id){const nav=document.querySelector(`[data-view="${view}"]`);setView(view,nav);setTimeout(()=>{const r=document.querySelector(`tr[data-id="${id}"]`);if(r){r.scrollIntoView({behavior:'smooth',block:'center'});r.classList.add('selected')}},120);}
+
+// ═══════════════════════════════════════════════════════════
+// TABLE RENDERING
+// ═══════════════════════════════════════════════════════════
+function getFilteredData(vm){
+  let data=[...(DB[vm.dbKey()]||[])];
+  if(sortCol)data.sort((a,b)=>{const av=a[sortCol]||'',bv=b[sortCol]||'';return av<bv?-sortDir:av>bv?sortDir:0});
+  if(searchQuery){const q=searchQuery.toLowerCase();data=data.filter(r=>Object.values(r).some(v=>String(v).toLowerCase().includes(q)));}
+  if(filterPole)data=data.filter(r=>r.pole===filterPole);
+  if(filterImp)data=data.filter(r=>r._importance===filterImp);
+  return data;
+}
+
+function renderTable(vm,schema){
+  const tableKey=viewToTableKey(vm.schema);
+  const impEnabled=ADMIN.importanceEnabled[tableKey];
+  return`<div id="table-panel">
+  <div class="table-toolbar">
+    <div class="search-wrap"><span class="search-icon">🔍</span><input type="text" placeholder="Rechercher…" value="${searchQuery}" oninput="onSearch(this.value)"></div>
+    <select class="filter-select" onchange="onFilterPole(this.value)"><option value="">Tous les pôles</option>${POLES.map(p=>`<option value="${p}" ${filterPole===p?'selected':''}>${p}</option>`).join('')}</select>
+    ${impEnabled?`<select class="filter-select" onchange="onFilterImp(this.value)"><option value="">Toutes importances</option>${IMPORTANCES.map(i=>`<option value="${i}" ${filterImp===i?'selected':''}>${i}</option>`).join('')}</select>`:''}
+    <span class="record-count" id="rec-count"></span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:28px"></th>${schema.cols.map(c=>{const f=schema.fields.find(f=>f.key===c);return`<th onclick="doSort('${c}')">${f?f.label:c}</th>`}).join('')}<th>Actions</th></tr></thead>
+      <tbody id="table-body">${renderRows(vm,schema)}</tbody>
+    </table>
+    ${getFilteredData(vm).length===0?'<div class="empty-state"><div class="es-icon">📭</div><p>Aucune donnée</p></div>':''}
+  </div></div>`;
+}
+
+function renderRows(vm,schema){
+  const data=getFilteredData(vm);updateCount(vm);
+  return data.map(row=>`<tr data-id="${row.id}" onclick="selectRow(${row.id})">
+  <td style="width:28px"><input type="checkbox" onclick="event.stopPropagation()"></td>
+  ${schema.cols.map(c=>`<td title="${row[c]||''}">${c==='_importance'?renderImpChip(row[c]):renderCell(c,row[c])}</td>`).join('')}
+  <td onclick="event.stopPropagation()" style="display:flex;gap:3px;padding:5px 7px">
+    <button class="btn btn-ghost" style="padding:2px 7px;font-size:11px" onclick="openEditModal(${row.id})">✏</button>
+    <button class="btn btn-danger" style="padding:2px 7px;font-size:11px" onclick="deleteRow(${row.id})">🗑</button>
+  </td>
+</tr>`).join('');
+}
+
+function renderCell(col,val){
+  if(val===''||val===null||val===undefined)return'<span style="color:var(--text-dim)">—</span>';
+  const statusCols=['saisie','acte','gecco','paye','pref','bulletinElectro','impactPaye','arreteFait','saisieAstre','acteNaissance','couchesPatho','arreteModif','arretTravail','soins','imputabilite','transmissionFinal','cnracl','formation','maNbi'];
+  if(statusCols.includes(col)){const cls=val==='OK'||val==='OUI'?'chip-green':val==='A FAIRE'?'chip-orange':val==='NON'||val==='SO'?'chip-gray':'chip-blue';return`<span class="chip ${cls}">${val}</span>`;}
+  if(col==='type'||col==='typeContrat'||col==='typeAT')return`<span class="chip chip-blue">${val}</span>`;
+  if(col==='newFlag')return val==='OUI'?'<span class="chip chip-green">NEW</span>':'';
+  if(col==='categorie')return`<span class="chip chip-purple">${val}</span>`;
+  if(col==='codeDispo'||col==='codeTpt')return`<span class="chip chip-orange">${val}</span>`;
+  if(col==='_importance')return renderImpChip(val);
+  if(col.toLowerCase().includes('date')||col.startsWith('fin')||col==='debutStage'||col==='titularisation'){
+    if(!val)return'<span style="color:var(--text-dim)">—</span>';
+    try{const d=new Date(val+'T00:00:00');if(!isNaN(d)){const today=new Date();const diff=Math.round((d-today)/86400000);const cls=diff<0?'color:var(--red)':diff<60?'color:var(--orange)':'';return`<span style="font-family:var(--mono);font-size:10.5px;${cls}">${d.toLocaleDateString('fr-FR')}</span>`;}}catch(e){}
+  }
+  return`<span>${String(val).slice(0,40)}</span>`;
+}
+
+function updateCount(vm){const el=document.getElementById('rec-count');if(el){const n=getFilteredData(vm).length;el.textContent=`${n} enreg.`;}}
+function doSort(col){
+  if(sortCol===col)sortDir=-sortDir;else{sortCol=col;sortDir=1;}
+  const vm=VIEW_MAP[currentView];if(!vm)return;
+  const tb=document.getElementById('table-body');
+  if(tb)tb.innerHTML=renderRows(vm,getSchema(vm.schema||'paye'));
+}
+function onSearch(v){
+  searchQuery=v;
+  const vm=VIEW_MAP[currentView];if(!vm)return;
+  const tb=document.getElementById('table-body');
+  if(tb)tb.innerHTML=renderRows(vm,getSchema(vm.schema||'paye'));
+}
+function onFilterPole(v){
+  filterPole=v;
+  const vm=VIEW_MAP[currentView];if(!vm)return;
+  const tb=document.getElementById('table-body');
+  if(tb)tb.innerHTML=renderRows(vm,getSchema(vm.schema||'paye'));
+}
+function onFilterImp(v){
+  filterImp=v;
+  const vm=VIEW_MAP[currentView];if(!vm)return;
+  const tb=document.getElementById('table-body');
+  if(tb)tb.innerHTML=renderRows(vm,getSchema(vm.schema||'paye'));
+}
+function selectRow(id){document.querySelectorAll('tbody tr').forEach(r=>r.classList.remove('selected'));const r=document.querySelector(`tr[data-id="${id}"]`);if(r)r.classList.toggle('selected');}
+
+// ═══════════════════════════════════════════════════════════
+// MODAL CRUD
+// ═══════════════════════════════════════════════════════════
+function openAddModal(){
+  editingId=null;
+  const vm=VIEW_MAP[currentView];if(!vm)return;
+  const schema=getSchema(vm.schema||'paye');
+  document.getElementById('modal-title').textContent='Ajouter — '+schema.title;
+  const tableKey=viewToTableKey(vm.schema||'paye');
+  const defaults={};
+  if(ADMIN.importanceEnabled[tableKey]) defaults._importance=ADMIN.settings.defaultImportance||'Normal';
+  document.getElementById('modal-body').innerHTML=renderForm(schema,defaults);
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function openEditModal(id){
+  const vm=VIEW_MAP[currentView];if(!vm)return;
+  const row=(DB[vm.dbKey()]||[]).find(r=>r.id===id);if(!row)return;
+  editingId=id;
+  const schema=getSchema(vm.schema||'paye');
+  document.getElementById('modal-title').textContent=`Modifier — ${row.nom||row.matricule||'Enregistrement #'+id}`;
+  document.getElementById('modal-body').innerHTML=renderForm(schema,row);
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function saveModal(){
+  const vm=VIEW_MAP[currentView];if(!vm)return;
+  const schema=getSchema(vm.schema||'paye');
+  const data=DB[vm.dbKey()];
+  const obj={};
+  schema.fields.forEach(f=>{const el=document.getElementById('f_'+f.key);if(el)obj[f.key]=el.value;});
+  if(editingId){const idx=data.findIndex(r=>r.id===editingId);if(idx>=0)data[idx]={...data[idx],...obj};}
+  else{obj.id=nextId++;data.push(obj);}
+  closeModal();
+  const tb=document.getElementById('table-body');if(tb)tb.innerHTML=renderRows(vm,schema);
+  updateBadges();markDirty(vm.file);
+  notify(editingId?'✓ Modifié — pensez à enregistrer':'✓ Ajouté — pensez à enregistrer');
+}
+
+function deleteRow(id){
+  if(!confirm('Supprimer cet enregistrement définitivement ?'))return;
+  const vm=VIEW_MAP[currentView];if(!vm)return;
+  const data=DB[vm.dbKey()];
+  const idx=data.findIndex(r=>r.id===id);if(idx>=0)data.splice(idx,1);
+  const schema=getSchema(vm.schema||'paye');
+  const tb=document.getElementById('table-body');if(tb)tb.innerHTML=renderRows(vm,schema);
+  updateBadges();markDirty(vm.file);notify('🗑 Supprimé — pensez à enregistrer');
+}
+
+function closeModal(){document.getElementById('modal-overlay').classList.remove('open');editingId=null;}
+document.getElementById('modal-overlay').addEventListener('click',e=>{if(e.target===document.getElementById('modal-overlay'))closeModal();});
+
+function renderForm(schema,data){
+  return`<div class="form-grid">${schema.fields.map(f=>`<div class="form-group ${f.full?'full':''}"><label>${f.label}${f.isCustom?'<span style="color:var(--purple);margin-left:4px">★</span>':''}${f.isImportance?'<span style="color:var(--orange);margin-left:4px">⚡</span>':''}</label>${
+    f.type==='select'?`<select id="f_${f.key}"><option value="">—</option>${(f.options||[]).map(o=>`<option value="${o}"${data[f.key]===o?' selected':''}>${o}</option>`).join('')}</select>`:
+    f.type==='textarea'?`<textarea id="f_${f.key}">${data[f.key]||''}</textarea>`:
+    `<input type="${f.type||'text'}" id="f_${f.key}" value="${data[f.key]||''}">`
+  }</div>`).join('')}</div>`;
+}
+
+function saveModal(){
+  const vm=VIEW_MAP[currentView];if(!vm)return;
+  const schema=getSchema(vm.schema);const data=DB[vm.dbKey()];
+  const obj={};schema.fields.forEach(f=>{const el=document.getElementById('f_'+f.key);if(el)obj[f.key]=el.value;});
+  if(editingId){const idx=data.findIndex(r=>r.id===editingId);if(idx>=0)data[idx]={...data[idx],...obj};}
+  else{obj.id=nextId++;data.push(obj);}
+  closeModal();const tb=document.getElementById('table-body');if(tb)tb.innerHTML=renderRows(vm,schema);
+  updateBadges();markDirty(vm.file);notify(editingId?'✓ Modifié':'✓ Ajouté');
+}
+
+function deleteRow(id){
+  if(!confirm('Supprimer ?'))return;
+  const vm=VIEW_MAP[currentView];if(!vm)return;
+  const data=DB[vm.dbKey()];const idx=data.findIndex(r=>r.id===id);if(idx>=0)data.splice(idx,1);
+  const tb=document.getElementById('table-body');if(tb)tb.innerHTML=renderRows(vm,getSchema(vm.schema));
+  updateBadges();markDirty(vm.file);notify('🗑 Supprimé');
+}
+
+// ═══════════════════════════════════════════════════════════
+// PARAMÉTRAGE PAYE
+// ═══════════════════════════════════════════════════════════
+function renderParamsTable(){
+  const data=DB['params_paye'];
+  if(!data.length)return`<div class="empty-state" style="margin:40px"><div class="es-icon">📋</div><p>Chargez le Cahier de Paye</p></div>`;
+  return`<div style="padding:18px"><div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden">
+  <table style="width:100%;border-collapse:collapse">
+    <thead><tr style="background:var(--surface2)">${['TYPE','BULLETINS','SUIVI MENSUEL','PREF','NEW'].map(h=>`<th style="padding:8px 11px;text-align:left;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);border-bottom:1px solid var(--border)">${h}</th>`).join('')}</tr></thead>
+    <tbody>${data.map(r=>`<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:7px 11px"><span class="chip chip-blue">${r.type}</span></td>
+      ${[r.bulletins,r.suivi,r.pref,r.newFlag].map(v=>v?`<td style="padding:7px 11px"><span class="chip ${v==='OUI'||v==='OK'?'chip-green':v==='A FAIRE'?'chip-orange':'chip-gray'}">${v}</span></td>`:`<td style="padding:7px 11px;color:var(--text-dim)">—</td>`).join('')}
+    </tr>`).join('')}</tbody>
+  </table></div></div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// ██████ ADMINISTRATION PAGE ██████
+// ═══════════════════════════════════════════════════════════
+function renderAdminPage(){
+  const tabs=[
+    {id:'columns',    label:'📋 Colonnes'},
+    {id:'tabs',       label:'📑 Onglets'},
+    {id:'dashboard',  label:'🎛 Dashboard'},
+    {id:'importance', label:'⚡ Importance'},
+    {id:'templates',  label:'💾 Templates'},
+    {id:'settings',   label:'⚙ Paramètres'},
+  ];
+  return`<div id="admin-page">
+  <div class="admin-tabs">
+    ${tabs.map(t=>`<div class="admin-tab ${t.id===adminTab?'active':''}" onclick="setAdminTab('${t.id}')">${t.label}</div>`).join('')}
+  </div>
+  <div class="admin-content" id="admin-content">
+    ${renderAdminTab(adminTab)}
+  </div>
+</div>`;
+}
+
+function setAdminTab(tab){adminTab=tab;const c=document.getElementById('admin-content');if(c)c.innerHTML=renderAdminTab(tab);}
+
+function renderAdminTab(tab){
+  if(tab==='columns')  return renderAdminColumns();
+  if(tab==='tabs')     return renderAdminTabs();
+  if(tab==='dashboard')return renderAdminDashboard();
+  if(tab==='importance')return renderAdminImportance();
+  if(tab==='templates')return renderAdminTemplates();
+  if(tab==='settings') return renderAdminSettings();
+  return'';
+}
+
+// ── TAB: COLONNES ─────────────────────────────────────────
+const ALL_TABLES=[
+  {key:'paye_',       label:'Cahier de Paye (mensuel)', file:'paye'},
+  {key:'paye_N1',     label:'Cahier de Paye — Report N+1', file:'paye'},
+  {key:'tdb_cdd',     label:'CDD', file:'tdb'},
+  {key:'tdb_cnp',     label:'CNP', file:'tdb'},
+  {key:'tdb_stagiaires',label:'Stagiaires', file:'tdb'},
+  {key:'tdb_apprentis', label:'Apprentis', file:'tdb'},
+  {key:'tdb_experts',   label:'Experts', file:'tdb'},
+  {key:'tdb_dispo',     label:'Disponibilités', file:'tdb'},
+  {key:'tdb_detach_sort',label:'Détachements sortants', file:'tdb'},
+  {key:'tdb_detach_entr',label:'Détachements entrants', file:'tdb'},
+  {key:'tdb_mater',     label:'Maternité', file:'tdb'},
+  {key:'tdb_parental',  label:'Congé parental', file:'tdb'},
+  {key:'tdb_indispo',   label:'Indisponibilité physique', file:'tdb'},
+  {key:'tdb_tpartiel',  label:'Temps partiel', file:'tdb'},
+  {key:'tdb_sejour',    label:'Cartes de séjour', file:'tdb'},
+  {key:'tdb_tpt',       label:'Temps partiel thérap.', file:'tdb'},
+  {key:'tdb_at',        label:'Accidents du travail', file:'tdb'},
+];
+
+function renderAdminColumns(){
+  return`<div>
+  <div class="admin-section">
+    <div class="admin-section-title">Gérer les colonnes par tableau</div>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">Sélectionnez un tableau pour voir et modifier ses colonnes. Les colonnes ★ sont personnalisées.</p>
+    ${ALL_TABLES.map(t=>renderTableColEditor(t)).join('')}
+  </div>
+  <div class="admin-section">
+    <div class="admin-section-title">Ajouter une colonne à tous les tableaux</div>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Pratique pour ajouter IM, ISFE, SFT, TRANSPORT ou tout autre champ commun d'un seul coup.</p>
+    <div class="add-col-row">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">Libellé colonne</div>
+        <input type="text" id="global-col-label" placeholder="ex: IM, ISFE, TRANSPORT…" style="width:200px">
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">Type</div>
+        <select id="global-col-type">
+          <option value="text">Texte</option>
+          <option value="number">Nombre</option>
+          <option value="date">Date</option>
+          <option value="select">Liste déroulante</option>
+          <option value="textarea">Zone de texte</option>
+        </select>
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">Options (si liste, séparées par ;)</div>
+        <input type="text" id="global-col-options" placeholder="OUI;NON;SO" style="width:200px">
+      </div>
+      <button class="btn btn-purple" onclick="addColToAll()">+ Ajouter à tous</button>
+    </div>
+  </div>
+</div>`;
+}
+
+function renderTableColEditor(t){
+  const customCols=ADMIN.customCols[t.key]||[];
+  const baseCols=t.key==='paye_'?PAYE_COLS_BASE:t.key==='paye_N1'?N1_COLS:TDB_MAP_BASE[t.key]?TDB_MAP_BASE[t.key].cols:[];
+  const schema=Object.values(SCHEMAS_BASE).find(s=>s.title===ALL_TABLES.find(x=>x.key===t.key)?.label?.split(' (')[0]);
+  const fieldMap={};if(schema)schema.fields.forEach(f=>fieldMap[f.key]=f.label);
+  const allCols=[...baseCols,...customCols.map(c=>c.key)];
+  const visibleCols=ADMIN.visibleCols[t.key]||allCols;
+
+  return`<details style="margin-bottom:8px">
+  <summary style="padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);cursor:pointer;font-size:12.5px;font-weight:500;list-style:none;display:flex;align-items:center;gap:8px">
+    <span style="flex:1">${t.label}</span>
+    <span style="font-size:10.5px;color:var(--text-muted)">${allCols.length} colonnes</span>
+    ${customCols.length?`<span class="chip chip-purple" style="font-size:9px">${customCols.length} custom</span>`:''}
+  </summary>
+  <div style="padding:14px;background:var(--surface2);border:1px solid var(--border);border-top:none;border-radius:0 0 var(--r) var(--r)">
+    
+    <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px">Colonnes actives (décochez pour masquer)</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+      ${allCols.map(colKey=>{
+        const isCustom=customCols.some(c=>c.key===colKey);
+        const isVisible=visibleCols.includes(colKey);
+        const customDef=customCols.find(c=>c.key===colKey);
+        const lbl=customDef?customDef.label:(fieldMap[colKey]||colKey);
+        return`<label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:3px 8px;background:var(--surface3);border:1px solid var(--border);border-radius:6px;font-size:11px;${isCustom?'border-color:rgba(192,126,247,.4);color:var(--purple)':''}">
+          <input type="checkbox" ${isVisible?'checked':''} onchange="toggleColVisible('${t.key}','${colKey}',this.checked)" style="accent-color:var(--purple)">
+          ${lbl}${isCustom?' ★':''}
+          ${isCustom?`<span class="del-col" onclick="event.preventDefault();delCustomCol('${t.key}','${colKey}')" style="margin-left:3px;cursor:pointer;color:var(--red);font-size:10px">✕</span>`:''}
+        </label>`;
+      }).join('')}
+    </div>
+
+    <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px">Ajouter une colonne</div>
+    <div class="add-col-row">
+      <div>
+        <input type="text" id="col-label-${t.key.replace(/[^a-z0-9]/gi,'_')}" placeholder="Libellé (ex: IM, SFT…)" style="width:160px">
+      </div>
+      <div>
+        <select id="col-type-${t.key.replace(/[^a-z0-9]/gi,'_')}">
+          <option value="text">Texte</option><option value="number">Nombre</option>
+          <option value="date">Date</option><option value="select">Liste</option><option value="textarea">Zone texte</option>
+        </select>
+      </div>
+      <div>
+        <input type="text" id="col-opts-${t.key.replace(/[^a-z0-9]/gi,'_')}" placeholder="OUI;NON;SO (si liste)" style="width:160px">
+      </div>
+      <button class="btn btn-purple" onclick="addCustomCol('${t.key}')">+ Ajouter</button>
+    </div>
+  </div>
+</details>`;
+}
+
+function sanitizeKey(label){return label.toLowerCase().replace(/[^a-z0-9]/gi,'_').replace(/_+/g,'_').replace(/^_|_$/g,'');}
+
+function addCustomCol(tableKey){
+  const safeKey=tableKey.replace(/[^a-z0-9]/gi,'_');
+  const labelEl=document.getElementById('col-label-'+safeKey);
+  const typeEl=document.getElementById('col-type-'+safeKey);
+  const optsEl=document.getElementById('col-opts-'+safeKey);
+  const label=(labelEl?labelEl.value:'').trim();if(!label){notify('⚠ Saisissez un libellé');return;}
+  const type=typeEl?typeEl.value:'text';
+  const optStr=optsEl?optsEl.value:'';
+  const options=type==='select'&&optStr?optStr.split(';').map(s=>s.trim()).filter(Boolean):null;
+  const key=sanitizeKey(label);
+  if(!ADMIN.customCols[tableKey])ADMIN.customCols[tableKey]=[];
+  if(ADMIN.customCols[tableKey].some(c=>c.key===key)){notify('⚠ Cette colonne existe déjà');return;}
+  ADMIN.customCols[tableKey].push({key,label,type,options});
+  saveAdminConfig();
+  notify(`✓ Colonne "${label}" ajoutée à ${tableKey}`);
+  setAdminTab('columns');
+}
+
+function delCustomCol(tableKey,colKey){
+  if(!confirm('Supprimer cette colonne ? Les données existantes dans cette colonne seront perdues.'))return;
+  ADMIN.customCols[tableKey]=(ADMIN.customCols[tableKey]||[]).filter(c=>c.key!==colKey);
+  if(ADMIN.visibleCols[tableKey])ADMIN.visibleCols[tableKey]=ADMIN.visibleCols[tableKey].filter(k=>k!==colKey);
+  saveAdminConfig();notify(`✓ Colonne "${colKey}" supprimée`);setAdminTab('columns');
+}
+
+function toggleColVisible(tableKey,colKey,visible){
+  const baseCols=tableKey==='paye_'?PAYE_COLS_BASE:tableKey==='paye_N1'?N1_COLS:TDB_MAP_BASE[tableKey]?TDB_MAP_BASE[tableKey].cols:[];
+  const customCols=(ADMIN.customCols[tableKey]||[]).map(c=>c.key);
+  const allCols=[...baseCols,...customCols];
+  if(!ADMIN.visibleCols[tableKey])ADMIN.visibleCols[tableKey]=[...allCols];
+  if(visible){if(!ADMIN.visibleCols[tableKey].includes(colKey))ADMIN.visibleCols[tableKey].push(colKey);}
+  else{ADMIN.visibleCols[tableKey]=ADMIN.visibleCols[tableKey].filter(k=>k!==colKey);}
+  saveAdminConfig();
+}
+
+function addColToAll(){
+  const label=(document.getElementById('global-col-label').value||'').trim();if(!label){notify('⚠ Saisissez un libellé');return;}
+  const type=document.getElementById('global-col-type').value;
+  const optStr=document.getElementById('global-col-options').value;
+  const options=type==='select'&&optStr?optStr.split(';').map(s=>s.trim()).filter(Boolean):null;
+  const key=sanitizeKey(label);
+  let count=0;
+  ALL_TABLES.forEach(t=>{
+    if(!ADMIN.customCols[t.key])ADMIN.customCols[t.key]=[];
+    if(!ADMIN.customCols[t.key].some(c=>c.key===key)){ADMIN.customCols[t.key].push({key,label,type,options});count++;}
+  });
+  saveAdminConfig();notify(`✓ Colonne "${label}" ajoutée à ${count} tableaux`);setAdminTab('columns');
+}
+
+// ── TAB: ONGLETS ─────────────────────────────────────────
+function renderAdminTabs(){
+  const custom=ADMIN.customTabs||[];
+  return`<div>
+  <div class="admin-section">
+    <div class="admin-section-title">Onglets personnalisés</div>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">Ajoutez de nouveaux onglets au Cahier de Paye ou au Tableau de Bord. Les données sont indépendantes et exportables en CSV.</p>
+    ${custom.length===0?`<div style="color:var(--text-muted);font-size:12px;padding:12px 0;text-align:center">Aucun onglet personnalisé</div>`:''}
+    ${custom.map(tab=>`<div class="admin-row">
+      <div style="flex:1">
+        <div class="admin-row-label">${tab.label}</div>
+        <div class="admin-row-sub">Fichier : ${tab.file==='paye'?'Cahier de Paye':'Tableau de Bord'} — ID: ${tab.id}</div>
+      </div>
+      <span class="chip chip-purple">Custom</span>
+      <button class="btn btn-danger" style="font-size:11px;padding:3px 8px" onclick="delCustomTab('${tab.id}')">Supprimer</button>
+    </div>`).join('')}
+  </div>
+  <div class="admin-section">
+    <div class="admin-section-title">Créer un nouvel onglet</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">
+      <div class="form-group"><label>Nom de l'onglet</label><input type="text" id="new-tab-label" placeholder="ex: Mutations, Formations…"></div>
+      <div class="form-group"><label>Fichier cible</label><select id="new-tab-file"><option value="paye">Cahier de Paye</option><option value="tdb">Tableau de Bord</option></select></div>
+      <div class="form-group"><label>Colonnes initiales (séparées par ;)</label><input type="text" id="new-tab-cols" placeholder="Nom;Prénom;Pôle;Date…"></div>
+    </div>
+    <button class="btn btn-purple" onclick="createCustomTab()">+ Créer l'onglet</button>
+  </div>
+</div>`;
+}
+
+function createCustomTab(){
+  const label=(document.getElementById('new-tab-label').value||'').trim();
+  const file=document.getElementById('new-tab-file').value;
+  const colsStr=document.getElementById('new-tab-cols').value;
+  if(!label){notify('⚠ Saisissez un nom');return;}
+  const id='custom_'+sanitizeKey(label)+'_'+Date.now();
+  const extraCols=colsStr.split(';').map(s=>s.trim()).filter(Boolean);
+  if(!ADMIN.customTabs)ADMIN.customTabs=[];
+  ADMIN.customTabs.push({id,label,file,cols:extraCols});
+  DB[id]=[];
+  // Créer les colonnes custom
+  if(!ADMIN.customCols[id])ADMIN.customCols[id]=[];
+  extraCols.forEach(colLabel=>{
+    const key=sanitizeKey(colLabel);
+    if(!ADMIN.customCols[id].some(c=>c.key===key))
+      ADMIN.customCols[id].push({key,label:colLabel,type:'text',options:null});
+  });
+  // Construire un schéma pour cet onglet
+  const customFields=[
+    {key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
+    {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'matricule',label:'Matricule',type:'text'},
+    ...(ADMIN.customCols[id]||[]).map(c=>({key:c.key,label:c.label,type:c.type||'text',options:c.options||null})),
+    {key:'remarques',label:'Remarques',type:'textarea',full:true}
+  ];
+  SCHEMAS_BASE[id]={title:label, fields:customFields, cols:customFields.filter(f=>!f.full).map(f=>f.key)};
+  VIEW_MAP[id]={dbKey:()=>id, schema:id, file, showMonths:false};
+  addTabToNav(id,label);
+  saveAdminConfig();notify(`✓ Onglet "${label}" créé`);setAdminTab('tabs');
+}
+
+function delCustomTab(id){
+  if(!confirm('Supprimer cet onglet et toutes ses données ?'))return;
+  ADMIN.customTabs=(ADMIN.customTabs||[]).filter(t=>t.id!==id);
+  delete DB[id];delete VIEW_MAP[id];
+  // Remove from nav
+  const navEl=document.querySelector(`[data-view="${id}"]`);if(navEl)navEl.remove();
+  saveAdminConfig();notify('✓ Onglet supprimé');setAdminTab('tabs');
+}
+
+function addTabToNav(id,label){
+  const nav=document.getElementById('sb-nav');
+  let customGroup=document.getElementById('nav-custom-group');
+  if(!customGroup){
+    customGroup=document.createElement('div');customGroup.id='nav-custom-group';customGroup.className='nav-group';
+    customGroup.innerHTML='<div class="nav-group-label">Onglets personnalisés</div>';
+    nav.appendChild(customGroup);
+  }
+  const item=document.createElement('div');item.className='nav-item';item.dataset.view=id;
+  item.innerHTML=`<div class="nav-dot"></div>${label}<span class="badge" id="badge-${id}">0</span>`;
+  item.onclick=()=>setView(id,item);
+  customGroup.appendChild(item);
+}
+
+// ── TAB: DASHBOARD ────────────────────────────────────────
+function renderAdminDashboard(){
+  const widgets=ADMIN.dashConfig.widgets;
+  const kpiOrder=ADMIN.dashConfig.kpiOrder;
+  return`<div>
+  <div class="admin-section">
+    <div class="admin-section-title">Ordre des KPI (glisser-déposer)</div>
+    <div id="kpi-sort-list" style="display:flex;flex-wrap:wrap;gap:8px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r)">
+      ${kpiOrder.map((k,i)=>{const d=KPI_DEFS[k];if(!d)return'';return`<div class="col-tag" draggable="true" data-kpi="${k}" ondragstart="kpiDragStart(event)" ondragover="event.preventDefault()" ondrop="kpiDrop(event,'${k}')">⠿ ${typeof d.label==='function'?d.label():d.label}</div>`}).join('')}
+    </div>
+  </div>
+  <div class="admin-section">
+    <div class="admin-section-title">Widgets du tableau de bord</div>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Activez/désactivez les widgets, choisissez leur largeur (1 ou 2 colonnes) et configurez les widgets de données récentes.</p>
+    <div id="widget-list">
+      ${widgets.map(w=>renderWidgetEditor(w)).join('')}
+    </div>
+    <div style="margin-top:14px;display:flex;gap:8px">
+      <button class="btn btn-primary" onclick="applyDashConfig()">✓ Appliquer</button>
+      <button class="btn btn-ghost" onclick="resetDashConfig()">Réinitialiser</button>
+    </div>
+  </div>
+</div>`;
+}
+
+function renderWidgetEditor(w){
+  const recentMap={recentPaye:'Cahier de paye',recentCdd:'CDD',recentDispo:'Disponibilités',recentAt:'Accidents travail',recentMater:'Maternité'};
+  const isRecent=!!recentMap[w.id];
+  return`<div class="widget-item" draggable="true" data-widget="${w.id}">
+  <span class="widget-move">⠿</span>
+  <input type="checkbox" id="w-en-${w.id}" ${w.enabled?'checked':''}>
+  <div style="flex:1">
+    <div style="font-size:12.5px;font-weight:500">${w.title}</div>
+    ${isRecent?`<div style="font-size:11px;color:var(--text-muted);margin-top:3px">${recentMap[w.id]}</div>`:''}
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+    <div style="font-size:10.5px;color:var(--text-muted)">Largeur:</div>
+    <select id="w-cols-${w.id}" style="padding:3px 6px;background:var(--surface);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:11px;font-family:var(--font)">
+      <option value="1" ${w.cols===1?'selected':''}>1/2</option>
+      <option value="2" ${w.cols===2?'selected':''}>Pleine largeur</option>
+    </select>
+    ${isRecent?`
+    <div style="font-size:10.5px;color:var(--text-muted)">Afficher:</div>
+    <select id="w-cnt-${w.id}" style="padding:3px 6px;background:var(--surface);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:11px;font-family:var(--font)">
+      ${[3,5,10,15,20].map(n=>`<option value="${n}" ${w.count===n?'selected':''}>${n} lignes</option>`).join('')}
+    </select>
+    <select id="w-imp-${w.id}" style="padding:3px 6px;background:var(--surface);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:11px;font-family:var(--font)">
+      <option value="">Toutes importances</option>
+      ${IMPORTANCES.map(i=>`<option value="${i}" ${w.filterImp===i?'selected':''}>${i}</option>`).join('')}
+    </select>`:''}
+  </div>
+</div>`;
+}
+
+function applyDashConfig(){
+  ADMIN.dashConfig.widgets.forEach(w=>{
+    const en=document.getElementById('w-en-'+w.id);if(en)w.enabled=en.checked;
+    const cols=document.getElementById('w-cols-'+w.id);if(cols)w.cols=parseInt(cols.value);
+    const cnt=document.getElementById('w-cnt-'+w.id);if(cnt)w.count=parseInt(cnt.value);
+    const imp=document.getElementById('w-imp-'+w.id);if(imp)w.filterImp=imp.value;
+  });
+  saveAdminConfig();notify('✓ Dashboard mis à jour');
+  // Re-render dashboard if active
+  if(currentView==='dashboard')renderView();
+}
+
+function resetDashConfig(){
+  if(!confirm('Réinitialiser la configuration du dashboard ?'))return;
+  ADMIN.dashConfig=defaultAdminConfig().dashConfig;saveAdminConfig();notify('✓ Réinitialisé');setAdminTab('dashboard');
+}
+
+// kpiDragStart/kpiDrop also available as inline handlers (initAdminDrag overrides with addEventListener)
+let kpiDragKey=null;
+function kpiDragStart(e){kpiDragKey=e.currentTarget.dataset.kpi;}
+function kpiDrop(e,targetKey){
+  e.preventDefault();if(!kpiDragKey||kpiDragKey===targetKey)return;
+  const order=ADMIN.dashConfig.kpiOrder;
+  const fi=order.indexOf(kpiDragKey),ti=order.indexOf(targetKey);
+  if(fi>=0&&ti>=0){order.splice(fi,1);order.splice(ti,0,kpiDragKey);}
+  kpiDragKey=null;
+  saveAdminConfig();setAdminTab('dashboard');
+}
+
+// ── TAB: IMPORTANCE ───────────────────────────────────────
+function renderAdminImportance(){
+  return`<div>
+  <div class="admin-section">
+    <div class="admin-section-title">Colonne d'importance par tableau</div>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">Activez la colonne "Importance" sur les tableaux de votre choix. Elle permet de catégoriser chaque enregistrement : <span class="imp-chip imp-normal">Normal</span> <span class="imp-chip imp-moyenne">Moyenne</span> <span class="imp-chip imp-haute">Haute</span> <span class="imp-chip imp-urgente">Urgente</span></p>
+    ${ALL_TABLES.map(t=>`<div class="admin-row">
+      <div style="flex:1">
+        <div class="admin-row-label">${t.label}</div>
+        ${ADMIN.importanceEnabled[t.key]?'<div class="admin-row-sub" style="color:var(--green)">✓ Activée — filtre disponible dans le tableau + dashboard</div>':''}
+      </div>
+      <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12px">
+        <input type="checkbox" ${ADMIN.importanceEnabled[t.key]?'checked':''} onchange="toggleImportance('${t.key}',this.checked)" style="accent-color:var(--purple);width:15px;height:15px">
+        ${ADMIN.importanceEnabled[t.key]?'<span style="color:var(--green)">Activée</span>':'<span style="color:var(--text-muted)">Désactivée</span>'}
+      </label>
+    </div>`).join('')}
+  </div>
+  <div class="admin-section">
+    <div class="admin-section-title">Valeurs d'importance</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r)">
+      ${IMPORTANCES.map(i=>`<div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 16px;background:var(--surface3);border-radius:var(--r)">${renderImpChip(i)}<span style="font-size:11px;color:var(--text-muted)">Niveau ${IMPORTANCES.indexOf(i)+1}</span></div>`).join('')}
+    </div>
+    <p style="font-size:11px;color:var(--text-muted);margin-top:10px">Les valeurs d'importance sont fixes et communes à tous les tableaux.</p>
+  </div>
+  <div class="admin-section">
+    <div class="admin-section-title">Widgets de priorité sur le dashboard</div>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Dans l'onglet Dashboard ci-dessus, activez les widgets "Derniers enregistrements" et filtrez par importance pour afficher les urgences en priorité.</p>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      ${['Urgente','Haute','Moyenne'].map(imp=>`<div style="padding:12px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);font-size:12px">
+        <div style="margin-bottom:6px;font-weight:600">${renderImpChip(imp)}</div>
+        <div style="color:var(--text-muted);font-size:11.5px">
+          ${Object.keys(DB).map(k=>{const n=(DB[k]||[]).filter(r=>r._importance===imp).length;return n>0?`${k}: <strong>${n}</strong>`:null}).filter(Boolean).join(', ')||'Aucune donnée'}
+        </div>
+      </div>`).join('')}
+    </div>
+  </div>
+</div>`;
+}
+
+function toggleImportance(tableKey,enabled){
+  ADMIN.importanceEnabled[tableKey]=enabled;
+  saveAdminConfig();
+  notify(enabled?`✓ Importance activée pour ${tableKey}`:`✓ Importance désactivée`);
+  // Refresh le même sous-onglet pour mettre à jour le statut
+  setTimeout(()=>setAdminTab('importance'),300);
+}
+
+// ── TAB: TEMPLATES ────────────────────────────────────────
+function renderAdminTemplates(){
+  const templates=ADMIN.templates||[];
+  return`<div>
+  <div class="admin-section">
+    <div class="admin-section-title">Templates sauvegardés</div>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">Un template capture la configuration complète : colonnes personnalisées, widgets actifs, colonne importance. Rechargez-le pour retrouver une configuration en un clic.</p>
+    ${templates.length===0?`<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:12px">Aucun template — sauvegardez votre configuration actuelle ci-dessous</div>`:''}
+    <div class="template-grid">
+      ${templates.map(t=>`<div class="tpl-card ${ADMIN._activeTemplate===t.id?'active-tpl':''}">
+        <span class="tpl-del" onclick="deleteTemplate('${t.id}')">✕</span>
+        <h4>${t.name}</h4>
+        <p>${new Date(t.savedAt).toLocaleDateString('fr-FR')} — ${Object.keys(t.customCols||{}).length} tables custom</p>
+        <div style="margin-top:10px;display:flex;gap:6px">
+          <button class="btn btn-primary" style="font-size:11px;padding:4px 9px" onclick="loadTemplate('${t.id}')">Charger</button>
+          <button class="btn btn-ghost" style="font-size:11px;padding:4px 9px" onclick="exportTemplate('${t.id}')">⬇ JSON</button>
+        </div>
+      </div>`).join('')}
+    </div>
+  </div>
+  <div class="admin-section">
+    <div class="admin-section-title">Sauvegarder la configuration actuelle</div>
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+      <div class="form-group" style="flex:1;min-width:200px"><label>Nom du template</label><input type="text" id="tpl-name" placeholder="ex: Configuration standard, Config maternité…"></div>
+      <div class="form-group" style="flex:1;min-width:200px"><label>Description (optionnel)</label><input type="text" id="tpl-desc" placeholder="Description courte…"></div>
+      <button class="btn btn-purple" onclick="saveTemplate()">💾 Sauvegarder template</button>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="exportAllConfig()">⬇ Exporter toute la config (JSON)</button>
+      <label class="btn btn-ghost" style="cursor:pointer">⬆ Importer config (JSON)<input type="file" accept=".json" onchange="importConfig(event)" style="display:none"></label>
+    </div>
+  </div>
+</div>`;
+}
+
+function saveTemplate(){
+  const name=(document.getElementById('tpl-name').value||'').trim();
+  if(!name){notify('⚠ Saisissez un nom');return;}
+  const id='tpl_'+Date.now();
+  const tpl={id,name,desc:document.getElementById('tpl-desc').value||'',savedAt:new Date().toISOString(),
+    customCols:JSON.parse(JSON.stringify(ADMIN.customCols)),
+    visibleCols:JSON.parse(JSON.stringify(ADMIN.visibleCols)),
+    importanceEnabled:JSON.parse(JSON.stringify(ADMIN.importanceEnabled)),
+    dashConfig:JSON.parse(JSON.stringify(ADMIN.dashConfig)),
+    settings:JSON.parse(JSON.stringify(ADMIN.settings)),
+  };
+  if(!ADMIN.templates)ADMIN.templates=[];
+  ADMIN.templates.push(tpl);saveAdminConfig();
+  notify(`✓ Template "${name}" sauvegardé`);setAdminTab('templates');
+}
+
+function loadTemplate(id){
+  const tpl=ADMIN.templates.find(t=>t.id===id);if(!tpl)return;
+  if(!confirm(`Charger le template "${tpl.name}" ? La configuration actuelle sera remplacée.`))return;
+  ADMIN.customCols=JSON.parse(JSON.stringify(tpl.customCols));
+  ADMIN.visibleCols=JSON.parse(JSON.stringify(tpl.visibleCols));
+  ADMIN.importanceEnabled=JSON.parse(JSON.stringify(tpl.importanceEnabled));
+  ADMIN.dashConfig=JSON.parse(JSON.stringify(tpl.dashConfig));
+  ADMIN.settings=JSON.parse(JSON.stringify(tpl.settings));
+  ADMIN._activeTemplate=id;
+  saveAdminConfig();notify(`✓ Template "${tpl.name}" chargé`);setAdminTab('templates');
+}
+
+function deleteTemplate(id){
+  if(!confirm('Supprimer ce template ?'))return;
+  ADMIN.templates=ADMIN.templates.filter(t=>t.id!==id);
+  saveAdminConfig();notify('✓ Template supprimé');setAdminTab('templates');
+}
+
+function exportTemplate(id){
+  const tpl=ADMIN.templates.find(t=>t.id===id);if(!tpl)return;
+  const blob=new Blob([JSON.stringify(tpl,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`grh_template_${sanitizeKey(tpl.name)}.json`;a.click();
+}
+
+function exportAllConfig(){
+  const blob=new Blob([JSON.stringify(ADMIN,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='grh_config_'+new Date().toISOString().slice(0,10)+'.json';a.click();
+}
+
+function importConfig(event){
+  const file=event.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const imported=JSON.parse(e.target.result);
+      // Merge templates si c'est un template
+      if(imported.customCols&&!imported.templates){
+        // C'est un template complet
+        ADMIN.customCols=imported.customCols||ADMIN.customCols;
+        ADMIN.visibleCols=imported.visibleCols||ADMIN.visibleCols;
+        ADMIN.importanceEnabled=imported.importanceEnabled||ADMIN.importanceEnabled;
+        ADMIN.dashConfig=imported.dashConfig||ADMIN.dashConfig;
+      } else {
+        // Config complète
+        Object.assign(ADMIN,imported);
+      }
+      saveAdminConfig();notify('✓ Configuration importée');setAdminTab('templates');
+    }catch(ex){notify('⚠ Fichier JSON invalide');}
+  };reader.readAsText(file);
+}
+
+// ── TAB: PARAMÈTRES ───────────────────────────────────────
+function renderAdminSettings(){
+  const s=ADMIN.settings;
+  const currentTheme=s.theme||'dark';
+  const themes=[
+    {id:'dark',   label:'Sombre',          bg:'#0f1117', surface:'#181c27', accent:'#4f8ef7'},
+    {id:'light',  label:'Clair',           bg:'#f0f2f7', surface:'#ffffff', accent:'#2563eb'},
+    {id:'blue',   label:'Bleu professionnel', bg:'#0a1628', surface:'#0f2040', accent:'#38bdf8'},
+    {id:'neutral',label:'Gris neutre (macOS)', bg:'#111113', surface:'#1c1c1e', accent:'#0a84ff'},
+  ];
+  return`<div>
+  <div class="admin-section">
+    <div class="admin-section-title">Thème de l'interface</div>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Choisissez l'apparence de GRH Manager. Le thème est appliqué immédiatement et sauvegardé automatiquement.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
+      ${themes.map(t=>`
+      <div onclick="applyTheme('${t.id}')" style="cursor:pointer;border-radius:var(--rl);border:2px solid ${currentTheme===t.id?'var(--accent)':'var(--border)'};overflow:hidden;transition:all .2s;${currentTheme===t.id?'box-shadow:0 0 0 3px var(--accent-soft)':''}">
+        <!-- Mini preview -->
+        <div style="background:${t.bg};padding:10px;height:70px;display:flex;gap:6px">
+          <div style="background:${t.surface};width:45px;border-radius:5px;display:flex;flex-direction:column;gap:3px;padding:5px">
+            <div style="height:4px;border-radius:2px;background:${t.accent};width:70%"></div>
+            <div style="height:3px;border-radius:2px;background:${t.surface};filter:brightness(1.5);width:90%"></div>
+            <div style="height:3px;border-radius:2px;background:${t.surface};filter:brightness(1.5);width:80%"></div>
+            <div style="height:3px;border-radius:2px;background:${t.surface};filter:brightness(1.5);width:60%"></div>
+          </div>
+          <div style="flex:1;background:${t.surface};border-radius:5px;padding:5px;display:flex;flex-direction:column;gap:4px">
+            <div style="height:4px;border-radius:2px;background:${t.accent};width:40%"></div>
+            <div style="height:3px;border-radius:2px;background:${t.surface};filter:brightness(1.5);width:80%"></div>
+            <div style="height:3px;border-radius:2px;background:${t.surface};filter:brightness(1.3);width:60%"></div>
+          </div>
+        </div>
+        <div style="padding:8px 12px;background:var(--surface2);display:flex;align-items:center;gap:8px">
+          <span style="font-size:12.5px;font-weight:600;flex:1">${t.label}</span>
+          ${currentTheme===t.id?'<span style="font-size:10px;color:var(--accent);font-weight:700">✓ Actif</span>':''}
+        </div>
+      </div>`).join('')}
+    </div>
+  </div>
+  <div class="admin-section">
+    <div class="admin-section-title">Paramètres généraux</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div class="form-group">
+        <label>Horizon d'alerte (jours)</label>
+        <input type="number" id="set-horizon" value="${s.alertHorizon||180}" min="30" max="730">
+        <div style="font-size:10.5px;color:var(--text-muted);margin-top:3px">Durée maximale pour les alertes (ex: 180 = 6 mois)</div>
+      </div>
+      <div class="form-group">
+        <label>Importance par défaut</label>
+        <select id="set-defimp">
+          ${IMPORTANCES.map(i=>`<option value="${i}" ${s.defaultImportance===i?'selected':''}>${i}</option>`).join('')}
+        </select>
+        <div style="font-size:10.5px;color:var(--text-muted);margin-top:3px">Valeur pré-remplie lors d'un ajout</div>
+      </div>
+    </div>
+    <div style="margin-top:14px">
+      <button class="btn btn-primary" onclick="saveSettings()">✓ Enregistrer les paramètres</button>
+    </div>
+  </div>
+  <div class="admin-section">
+    <div class="admin-section-title">Fichiers sources mémorisés</div>
+    ${['paye','tdb'].map(w=>{
+      const meta=JSON.parse(localStorage.getItem('grh_file_'+w)||'null');
+      return`<div class="admin-row">
+        <div style="flex:1">
+          <div class="admin-row-label">${w==='paye'?'Cahier de Paye':'Tableau de Bord'}</div>
+          <div class="admin-row-sub">${meta?`${meta.name} — chargé le ${new Date(meta.savedAt).toLocaleString('fr-FR')}`:'Non mémorisé'}</div>
+        </div>
+        ${meta?`<span class="chip chip-green">Mémorisé</span><button class="btn btn-danger" style="font-size:10.5px;padding:3px 8px" onclick="forgetOneFile('${w}')">Effacer</button>`:'<span class="chip chip-gray">—</span>'}
+      </div>`;
+    }).join('')}
+    <div style="margin-top:10px;display:flex;gap:8px">
+      <button class="btn btn-warning" onclick="forgetFiles()">🗑 Effacer tous les fichiers mémorisés</button>
+    </div>
+  </div>
+  <div class="admin-section">
+    <div class="admin-section-title">Informations système</div>
+    <div class="admin-row"><div class="admin-row-label">Version</div><span style="font-family:var(--mono);font-size:12px;color:var(--text-muted)">GRH Manager 2.1</span></div>
+    <div class="admin-row"><div class="admin-row-label">Colonnes custom</div><span style="font-family:var(--mono);font-size:12px;color:var(--accent)">${Object.values(ADMIN.customCols||{}).reduce((s,a)=>s+a.length,0)}</span></div>
+    <div class="admin-row"><div class="admin-row-label">Tables avec importance</div><span style="font-family:var(--mono);font-size:12px;color:var(--orange)">${Object.values(ADMIN.importanceEnabled||{}).filter(Boolean).length}</span></div>
+    <div class="admin-row"><div class="admin-row-label">Templates</div><span style="font-family:var(--mono);font-size:12px;color:var(--purple)">${(ADMIN.templates||[]).length}</span></div>
+    <div class="admin-row"><div class="admin-row-label">Onglets personnalisés</div><span style="font-family:var(--mono);font-size:12px;color:var(--green)">${(ADMIN.customTabs||[]).length}</span></div>
+    <div style="margin-top:14px">
+      <button class="btn btn-danger" onclick="resetAllAdmin()">⚠ Réinitialiser toute la config admin</button>
+    </div>
+  </div>
+</div>`;
+}
+
+function applyTheme(themeId){
+  document.documentElement.setAttribute('data-theme', themeId==='dark'?'':themeId);
+  ADMIN.settings.theme=themeId;
+  saveAdminConfig();
+  // Re-render settings tab to update active state
+  if(adminTab==='settings') setAdminTab('settings');
+  notify('✓ Thème "'+themeId+'" appliqué');
+}
+
+function saveSettings(){
+  const h=parseInt(document.getElementById('set-horizon').value)||180;
+  const di=document.getElementById('set-defimp').value;
+  ADMIN.settings.alertHorizon=h;ADMIN.settings.defaultImportance=di;
+  saveAdminConfig();notify('✓ Paramètres enregistrés');
+}
+
+async function forgetOneFile(which){
+  await idbDel(which+'_buf');
+  localStorage.removeItem('grh_file_'+which);
+  if(which==='paye'){wbPaye=null;fileHandlePaye=null;}
+  else{wbTdb=null;fileHandleTdb=null;}
+  const b=document.getElementById('fb-'+which);if(b)b.classList.remove('loaded');
+  const l=document.getElementById('fb-'+which+'-label');if(l)l.textContent=which==='paye'?'Cahier de Paye…':'Tableau de Bord…';
+  const sb=document.getElementById('save-all-btn');if(sb&&!wbPaye&&!wbTdb)sb.disabled=true;
+  notify('✓ Fichier '+which+' effacé de la mémoire');
+  setAdminTab('settings');
+}
+
+function resetAllAdmin(){
+  if(!confirm('Réinitialiser TOUTE la configuration d\'administration ? Les colonnes custom, templates et paramètres seront effacés.'))return;
+  ADMIN=defaultAdminConfig();saveAdminConfig();notify('✓ Configuration réinitialisée');setAdminTab('settings');
+}
+
+function initAdminDrag(){
+  // KPI sort list
+  const kpiList=document.getElementById('kpi-sort-list');
+  if(kpiList){
+    let draggedKpi=null;
+    kpiList.querySelectorAll('[data-kpi]').forEach(el=>{
+      el.addEventListener('dragstart',()=>draggedKpi=el);
+      el.addEventListener('dragover',e=>{e.preventDefault();const r=el.getBoundingClientRect();if(e.clientY<r.top+r.height/2)kpiList.insertBefore(draggedKpi,el);else kpiList.insertBefore(draggedKpi,el.nextSibling);});
+      el.addEventListener('dragend',()=>{
+        ADMIN.dashConfig.kpiOrder=[...kpiList.querySelectorAll('[data-kpi]')].map(el=>el.dataset.kpi);
+        saveAdminConfig();
+      });
+    });
+  }
+  // Widget list
+  const wList=document.getElementById('widget-list');
+  if(wList){
+    let draggedW=null;
+    wList.querySelectorAll('.widget-item[draggable]').forEach(el=>{
+      el.addEventListener('dragstart',()=>draggedW=el);
+      el.addEventListener('dragover',e=>{e.preventDefault();const r=el.getBoundingClientRect();if(e.clientY<r.top+r.height/2)wList.insertBefore(draggedW,el);else wList.insertBefore(draggedW,el.nextSibling);});
+      el.addEventListener('dragend',()=>{
+        const newOrder=[...wList.querySelectorAll('.widget-item[data-widget]')].map(el=>el.dataset.widget);
+        ADMIN.dashConfig.widgets.sort((a,b)=>newOrder.indexOf(a.id)-newOrder.indexOf(b.id));
+        saveAdminConfig();
+      });
+    });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// BADGES, CSV, NOTIFY
+// ═══════════════════════════════════════════════════════════
+function updateBadges(){
+  const m={paye:()=>MONTHS.reduce((s,m)=>s+DB['paye_'+m].length,0),n1:()=>DB['paye_N1'].length,cdd:()=>DB['tdb_cdd'].length,cnp:()=>DB['tdb_cnp'].length,stagiaires:()=>DB['tdb_stagiaires'].length,apprentis:()=>DB['tdb_apprentis'].length,experts:()=>DB['tdb_experts'].length,dispo:()=>DB['tdb_dispo'].length,'detach-sort':()=>DB['tdb_detach_sort'].length,'detach-entr':()=>DB['tdb_detach_entr'].length,mater:()=>DB['tdb_mater'].length,parental:()=>DB['tdb_parental'].length,indispo:()=>DB['tdb_indispo'].length,tpartiel:()=>DB['tdb_tpartiel'].length,sejour:()=>DB['tdb_sejour'].length,tpt:()=>DB['tdb_tpt'].length,at:()=>DB['tdb_at'].length};
+  Object.entries(m).forEach(([k,fn])=>{const el=document.getElementById('badge-'+k);if(el)el.textContent=fn();});
+}
+
+function exportCSV(){
+  const vm=VIEW_MAP[currentView];if(!vm)return;
+  const schema=getSchema(vm.schema||'paye');
+  const data=getFilteredData(vm);
+  const h=schema.fields.map(f=>f.label).join(';');
+  const rows=data.map(r=>schema.fields.map(f=>'"'+(r[f.key]||'')+'"').join(';'));
+  const blob=new Blob(['\uFEFF'+[h,...rows].join('\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`${schema.title}_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();URL.revokeObjectURL(a.href);
+  notify('⬇ CSV téléchargé');
+}
+
+let notifyTimer;
+function notify(msg){const el=document.getElementById('notify');document.getElementById('notify-text').textContent=msg;el.classList.add('show');clearTimeout(notifyTimer);notifyTimer=setTimeout(()=>el.classList.remove('show'),3200);}
+
+// ═══════════════════════════════════════════════════════════
+// INIT — restaurer onglets custom + schémas + thème + auto-reload
+// ═══════════════════════════════════════════════════════════
+
+// 1. Appliquer le thème sauvegardé immédiatement
+(function(){
+  const theme = ADMIN.settings.theme || 'dark';
+  document.documentElement.setAttribute('data-theme', theme==='dark'?'':theme);
+})();
+
+// 2. Restaurer les onglets custom
+(ADMIN.customTabs||[]).forEach(tab=>{
+  DB[tab.id]=[];
+  const customFields=[
+    {key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
+    {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'matricule',label:'Matricule',type:'text'},
+    ...(ADMIN.customCols[tab.id]||[]).map(c=>({key:c.key,label:c.label,type:c.type||'text',options:c.options||null})),
+    {key:'remarques',label:'Remarques',type:'textarea',full:true}
+  ];
+  if(!SCHEMAS_BASE[tab.id]){
+    SCHEMAS_BASE[tab.id]={title:tab.label,fields:customFields,cols:customFields.filter(f=>!f.full).map(f=>f.key)};
+  }
+  VIEW_MAP[tab.id]={dbKey:()=>tab.id,schema:tab.id,file:tab.file,showMonths:false};
+  addTabToNav(tab.id,tab.label);
+});
+
+// 3. Tenter le rechargement auto des fichiers Excel depuis IDB
+updateBadges();
+tryAutoReload();
+</script>
+</body>
+</html>
