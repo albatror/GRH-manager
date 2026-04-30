@@ -277,6 +277,7 @@ tbody td:first-child{font-family:var(--mono);font-size:10.5px;color:var(--text-m
       </div>
       <div class="nav-group">
         <div class="nav-group-label">Tableau de Bord RH</div>
+        <div id="nav-tdb-rh-items">
         <div class="nav-item" data-view="cdd" onclick="setView('cdd',this)"><div class="nav-dot"></div>CDD<span class="badge" id="badge-cdd">0</span></div>
         <div class="nav-item" data-view="cnp" onclick="setView('cnp',this)"><div class="nav-dot"></div>CNP<span class="badge" id="badge-cnp">0</span></div>
         <div class="nav-item" data-view="stagiaires" onclick="setView('stagiaires',this)"><div class="nav-dot"></div>Stagiaires<span class="badge" id="badge-stagiaires">0</span></div>
@@ -292,6 +293,7 @@ tbody td:first-child{font-family:var(--mono);font-size:10.5px;color:var(--text-m
         <div class="nav-item" data-view="sejour" onclick="setView('sejour',this)"><div class="nav-dot"></div>Cartes séjour<span class="badge" id="badge-sejour">0</span></div>
         <div class="nav-item" data-view="tpt" onclick="setView('tpt',this)"><div class="nav-dot"></div>Temps partiel thér.<span class="badge" id="badge-tpt">0</span></div>
         <div class="nav-item" data-view="at" onclick="setView('at',this)"><div class="nav-dot"></div>Accidents travail<span class="badge" id="badge-at">0</span></div>
+        </div>
       </div>
       <div class="nav-group">
         <div class="nav-group-label">Système</div>
@@ -366,6 +368,7 @@ function defaultAdminConfig() {
     importanceEnabled: {},
     // Onglets personnalisés ajoutés
     customTabs: [],   // [{id, label, group, parentFile}]
+    promotedTabs: [],  // [{id, label, sheetName, file}] — onglets dynamiques promus dans TDB RH
     // Config dashboard
     dashConfig: {
       kpiOrder: ['dispo','cdd','stagiaires','apprentis','at','mater','tpartiel','paye'],
@@ -400,62 +403,45 @@ const PAYE_COLS_BASE=['pole','matricule','nom','prenom','type','newFlag','impact
 const N1_COLS=['pole','matricule','nom','prenom','moisPaye','type','impactPaye','dateImpact'];
 
 const TDB_MAP_BASE={
-  tdb_cdd:        {sheet:'CDD',          cols:['matricule','nom','prenom','age','ventilBudget','statut','typeContrat','motifCode','motifLibelle','grade','dateDebut','dateFin','date1erContrat','dateEntree','pole','service']},
-  tdb_cnp:        {sheet:'CNP',          cols:['matricule','nom','prenom','grade','age','ventilBudget','motifCode','motifLibelle','dateDebut','dateFin','date1erContrat','dateEntree','pole','service']},
-  tdb_stagiaires: {sheet:'STAGIAIRES',   cols:['matricule','nom','prenom','grade','pole','typeStage','debutStage','titularisation','dateECS','dateEnvoiECS','dateReceptionECS','dateEFS','dateEnvoiEFS','dateReceptionEFS','cnracl','formation','sarcp','observations']},
-  tdb_apprentis:  {sheet:'APPRENTIS',    cols:['matricule','nom','prenom','age','typeContrat','numContrat','dateDebut','dateFin','pole','service','maitre','maNbi','changements']},
-  tdb_experts:    {sheet:'EXPERTS',      cols:['matricule','nom','prenom','gestion','positionAdmin','dateDebutPos','dateFinPos','dateDebutSit','dateFinSit','pole','service']},
-  tdb_detach_sort:{sheet:'DETACHEMENT SORTANTS',cols:['matricule','nom','prenom','grade','positionAdminCode','positionAdmin','codeDet','orgAccueil','dateDebut','dateFin','codeGestion','pole','service','remarques','contacts']},
-  tdb_detach_entr:{sheet:'DETACH ENTRANTS',     cols:['matricule','nom','prenom','statut','ventilBudget','grade','dateNomination','dateAnciennete','dateEntreeStatut','dateDebut','dateFin','detachLibelle','orgOrigine','pole','service','contactAdmin']},
-  tdb_dispo:      {sheet:'DISPO',        cols:['matricule','nom','prenom','grade','categorie','positionAdmin','codeDispo','controleCode','detail','date1erDispo','dateDebut','dateFin','fin5ans','fin10ans','codeGestion','pole','service']},
-  tdb_mater:      {sheet:'MATER',        cols:['pole','matricule','nom','prenom','statut','datePrevue','dateReelle','grossessePatho','dateDebutArret','dateFinArret','arreteFait','saisieAstre','acteNaissance','couchesPatho','arreteModif','signalIJSS','envoiFormulaire','suppressionTransport','observations']},
-  tdb_parental:   {sheet:'PARENTAL',     cols:['matricule','nom','prenom','grade','positionAdmin','dateDebut','dateFin','codeGestion','pole','service','observations']},
-  tdb_indispo:    {sheet:'INDISPO PHYSIQUE',cols:['pole','matricule','nom','prenom','positionAdmin','dateDebut','dateFin','dateRelance','demandeAgentRecep','motifDemande','conseilMedical','dateExpertise','observations']},
-  tdb_tpartiel:   {sheet:'TPARTIEL',     cols:['matricule','nom','prenom','statut','grade','quotite','typeTP','dateDebut','dateFin','pole','service','observations']},
-  tdb_sejour:     {sheet:'Carte Sejour', cols:['matricule','nom','prenom','statut','nationalite','numeroCarte','dateExpiration','pole','service']},
-  tdb_tpt:        {sheet:'TPT',          cols:['matricule','nom','prenom','positionAdmin','tauxRemuneration','coeffTaux','codeTpt','typeTPT','date1erTPT','dateDebut','dateFin','pole','service']},
-  tdb_at:         {sheet:'AT',           cols:['matricule','nom','prenom','typeAT','dateAT','arretTravail','dateDebutArret','dateFinArret','soins','dateDebutSoins','dateFinSoins','dateExpertise','avisMedecinExpert','saisineCommission','dateCommission','imputabilite','transmissionFinal','observations']},
+  // Mappings EXACTS basés sur les vrais en-têtes Excel (ordre des colonnes)
+  tdb_cdd:         {sheet:'CDD',                  cols:['matricule','nom','prenom','age','ventilBudget','statut','typeContrat','motifCode','motifLibelle','grade','dateDebut','dateFin','date1erContrat','dateEntree','pole','service']},
+  tdb_cnp:         {sheet:'CNP',                  cols:['matricule','nom','prenom','grade','age','ventilBudget','motifCode','motifLibelle','dateDebut','dateFin','date1erContrat','dateEntree','pole','service']},
+  tdb_stagiaires:  {sheet:'STAGIAIRES',            cols:['matricule','nom','prenom','grade','pole','typeStage','debutStage','titularisation','noticeECS','dateEnvoiECS','dateReceptionECS','noticeEFS','dateEnvoiEFS','dateReceptionEFS','cnracl','formation','sarcp','observations']},
+  tdb_apprentis:   {sheet:'APPRENTIS',             cols:['matricule','nom','prenom','age','typeContrat','numContrat','dateDebut','dateFin','pole','service','maitre','maNbi','changements']},
+  tdb_experts:     {sheet:'EXPERTS',               cols:['matricule','nom','prenom','gestion','positionAdmin','dateDebutPos','dateFinPos','dateDebutSit','dateFinSit','pole','service']},
+  tdb_detach_sort: {sheet:'DETACHEMENT SORTANTS',  cols:['matricule','nom','prenom','grade','positionAdminCode','positionAdmin','codeDet','orgAccueil','dateDebut','dateFin','codeGestion','pole','service','remarques','contacts']},
+  tdb_detach_entr: {sheet:'DETACH ENTRANTS',       cols:['matricule','nom','prenom','statut','ventilBudget','grade','dateNomination','dateAnciennete','dateEntreeStatut','dateDebut','dateFin','detachLibelle','orgOrigine','pole','service','contactAdmin']},
+  tdb_dispo:       {sheet:'DISPO',                 cols:['matricule','nom','prenom','grade','categorie','positionAdmin','codeDispo','controleCode','detail','date1erDispo','dateDebut','dateFin','fin5ans','fin10ans','codeGestion','pole','service']},
+  tdb_mater:       {sheet:'MATER',                 cols:['pole','matricule','nom','prenom','statut','datePrevue','dateReelle','grossessePatho','dateDebutArret','dateFinArret','arreteFait','saisieAstre','acteNaissance','couchesPatho','arreteModif','signalIJSS','envoiFormulaire','suppressionTransport','observations']},
+  tdb_parental:    {sheet:'PARENTAL',              cols:['matricule','nom','prenom','grade','positionAdmin','dateDebut','dateFin','codeGestion','pole','service','observations']},
+  tdb_indispo:     {sheet:'INDISPO PHYSIQUE',      cols:['pole','matricule','nom','prenom','positionAdmin','dateDebut','dateFin','dateRelance','demandeAgentRecep','motifDemande','conseilMedical','dateExpertise','observations']},
+  tdb_tpartiel:    {sheet:'TPARTIEL',              cols:['matricule','nom','prenom','statut','grade','quotite','typeTP','dateDebut','dateFin','pole','service','observations']},
+  tdb_sejour:      {sheet:'Carte Sejour',          cols:['matricule','nom','prenom','statut','nationalite','numeroCarte','dateExpiration','pole','service']},
+  tdb_tpt:         {sheet:'TPT',                   cols:['matricule','nom','prenom','positionAdmin','tauxRemuneration','coeffTaux','codeTpt','typeTPT','date1erTPT','dateDebut','dateFin','pole','service']},
+  tdb_at:          {sheet:'AT',                    cols:['matricule','nom','prenom','typeAT','dateAT','arretTravail','dateDebutArret','dateFinArret','soins','dateDebutSoins','dateFinSoins','dateExpertise','avisMedecinExpert','saisineCommission','dateCommission','imputabilite','transmissionFinal','observations']},
 };
 
-// Retourne les cols dynamiques (base + custom + importance si activé)
-function getEffectiveCols(tableKey) {
-  const base = tableKey==='paye_' ? [...PAYE_COLS_BASE] :
-               tableKey==='paye_N1' ? [...N1_COLS] :
-               TDB_MAP_BASE[tableKey] ? [...TDB_MAP_BASE[tableKey].cols] : [];
-  const custom = (ADMIN.customCols[tableKey]||[]).map(c=>c.key);
-  if (ADMIN.importanceEnabled[tableKey]) base.push('_importance');
-  return [...base, ...custom];
-}
-
-function getCustomColDefs(tableKey) {
-  const defs = [];
-  if (ADMIN.importanceEnabled[tableKey]) {
-    defs.push({key:'_importance', label:'Importance', type:'select', options:IMPORTANCES, isImportance:true});
-  }
-  return [...defs, ...(ADMIN.customCols[tableKey]||[])];
-}
-
-// Build SCHEMAS dynamically
-const SCHEMAS_BASE = {
-  paye:{title:'Cahier de Paye',
-    fields:[
-      {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'matricule',label:'Matricule',type:'text'},
-      {key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
-      {key:'type',label:'Type',type:'select',options:TYPES_PAYE},{key:'newFlag',label:'NEW',type:'select',options:['OUI','NON','']},
-      {key:'impactPaye',label:'Impact Paye',type:'select',options:['OUI','NON','']},
-      {key:'saisie',label:'Saisie',type:'select',options:['OK','A FAIRE','SO','']},
-      {key:'acte',label:'Acte',type:'select',options:['OK','A FAIRE','SO','']},
-      {key:'gecco',label:'GECCO & PJ',type:'select',options:['OK','A FAIRE','SO','']},
-      {key:'paye',label:'Paye',type:'select',options:['OK','A FAIRE','SO','']},
-      {key:'pref',label:'PREF',type:'select',options:['OK','A FAIRE','SO','']},
-      {key:'bulletinElectro',label:'Bulletin Électro',type:'select',options:['OK','A FAIRE','SO','']},
-      {key:'remarques',label:'Remarques',type:'textarea',full:true}],
+// ── SCHEMAS — DÉFINITION COMPLÈTE DES CHAMPS ET COLONNES VISIBLES ──────────
+const SCHEMAS_BASE={
+  paye:{title:'Cahier de Paye',fields:[
+    {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'matricule',label:'Matricule',type:'text'},
+    {key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
+    {key:'type',label:'Type',type:'select',options:TYPES_PAYE},{key:'newFlag',label:'NEW',type:'select',options:['OUI','NON','']},
+    {key:'impactPaye',label:'Impact Paye',type:'text'},
+    {key:'saisie',label:'Saisie',type:'select',options:['OK','A FAIRE','SO','']},
+    {key:'acte',label:'Acte',type:'select',options:['OK','A FAIRE','SO','']},
+    {key:'gecco',label:'GECCO & PJ',type:'select',options:['OK','A FAIRE','SO','']},
+    {key:'paye',label:'Paye',type:'select',options:['OK','A FAIRE','SO','']},
+    {key:'pref',label:'PREF',type:'select',options:['OK','A FAIRE','SO','']},
+    {key:'bulletinElectro',label:'Bulletin Électro',type:'select',options:['OK','A FAIRE','SO','']},
+    {key:'remarques',label:'Remarques',type:'textarea',full:true}],
     cols:['pole','matricule','nom','prenom','type','impactPaye','saisie','acte','paye','bulletinElectro']},
   dispo:{title:'Disponibilités',fields:[
     {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
     {key:'grade',label:'Grade',type:'text'},{key:'categorie',label:'Catégorie',type:'select',options:['T','C','B','A']},
     {key:'positionAdmin',label:'Position administrative',type:'text',full:true},
     {key:'codeDispo',label:'Code dispo',type:'select',options:['D1','D4','D7','CS']},
+    {key:'controleCode',label:'Contrôle code',type:'text'},
     {key:'detail',label:'Détail N4DS',type:'text',full:true},
     {key:'date1erDispo',label:'Date 1ère dispo',type:'date'},{key:'dateDebut',label:'Date début',type:'date'},
     {key:'dateFin',label:'Date fin',type:'date'},{key:'fin5ans',label:'Fin 5 ans',type:'date'},
@@ -464,68 +450,77 @@ const SCHEMAS_BASE = {
     cols:['matricule','nom','prenom','grade','positionAdmin','codeDispo','dateDebut','dateFin','fin5ans','pole']},
   cdd:{title:'CDD',fields:[
     {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
-    {key:'age',label:'Âge',type:'number'},{key:'ventilBudget',label:'Ventilation budgétaire',type:'text'},
+    {key:'age',label:'Âge',type:'number'},{key:'ventilBudget',label:'Ventil. budgétaire',type:'text'},
     {key:'statut',label:'Statut',type:'text'},{key:'typeContrat',label:'Type de contrat',type:'text'},
     {key:'motifCode',label:'Motif (code)',type:'text'},{key:'motifLibelle',label:'Motif (libellé)',type:'text'},
-    {key:'grade',label:'Grade',type:'text'},{key:'dateDebut',label:'Date début',type:'date'},{key:'dateFin',label:'Date fin',type:'date'},
-    {key:'date1erContrat',label:'1er contrat Astre',type:'date'},{key:'dateEntree',label:"Date entrée",type:'date'},
-    {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'}],
-    cols:['matricule','nom','prenom','grade','statut','typeContrat','dateDebut','dateFin','pole','service']},
+    {key:'grade',label:'Grade',type:'text'},{key:'dateDebut',label:'Début contrat en cours',type:'date'},
+    {key:'dateFin',label:'Fin contrat en cours',type:'date'},{key:'date1erContrat',label:'1er CDD saisi dans ASTRE',type:'date'},
+    {key:'dateEntree',label:"Date entrée organisme",type:'date'},{key:'pole',label:'Pôle',type:'select',options:POLES},
+    {key:'service',label:'Service',type:'text'},
+    {key:'propositionCDI',label:'Proposition CDI',type:'text'},
+    {key:'observations',label:'Observations',type:'textarea',full:true}],
+    cols:['nom','prenom','grade','date1erContrat','dateDebut','dateFin','propositionCDI','pole','service']},
   cnp:{title:'CNP',fields:[
     {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
     {key:'grade',label:'Grade',type:'text'},{key:'age',label:'Âge',type:'number'},
-    {key:'ventilBudget',label:'Ventilation budgétaire',type:'text'},{key:'motifCode',label:'Motif (code)',type:'text'},
-    {key:'motifLibelle',label:'Motif (libellé)',type:'text'},{key:'dateDebut',label:'Date début',type:'date'},
-    {key:'dateFin',label:'Date fin',type:'date'},{key:'date1erContrat',label:'1er contrat',type:'date'},
-    {key:'dateEntree',label:"Date entrée",type:'date'},{key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'}],
-    cols:['matricule','nom','prenom','grade','motifLibelle','dateDebut','dateFin','pole']},
+    {key:'ventilBudget',label:'Ventil. budgétaire',type:'text'},
+    {key:'motifCode',label:'Motif (code)',type:'text'},{key:'motifLibelle',label:'Motif (libellé)',type:'text'},
+    {key:'dateDebut',label:'Date début',type:'date'},{key:'dateFin',label:'Date fin',type:'date'},
+    {key:'date1erContrat',label:'1er contrat Astre',type:'date'},{key:'dateEntree',label:"Date entrée",type:'date'},
+    {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'}],
+    cols:['nom','prenom','grade','motifLibelle','dateDebut','dateFin','pole']},
   stagiaires:{title:'Stagiaires',fields:[
     {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
     {key:'grade',label:'Grade',type:'text'},{key:'pole',label:'Pôle',type:'select',options:POLES},
     {key:'typeStage',label:'Type de stage',type:'text'},{key:'debutStage',label:'Début de stage',type:'date'},
-    {key:'titularisation',label:'Titularisation',type:'date'},{key:'dateEnvoiECS',label:'Envoi ECS',type:'date'},
-    {key:'dateReceptionECS',label:'Réception ECS',type:'date'},{key:'dateEnvoiEFS',label:'Envoi EFS',type:'date'},
-    {key:'dateReceptionEFS',label:'Réception EFS',type:'date'},{key:'cnracl',label:'CNRACL',type:'select',options:['OUI','NON','']},
-    {key:'formation',label:"Formation",type:'select',options:['OUI','NON','']},
+    {key:'titularisation',label:'Titularisation',type:'date'},
+    {key:'noticeECS',label:'Date envoi notice ECS',type:'date'},{key:'dateEnvoiECS',label:'Date envoi ECS',type:'date'},
+    {key:'dateReceptionECS',label:'Date réception ECS',type:'date'},
+    {key:'noticeEFS',label:'Date envoi notice EFS',type:'date'},{key:'dateEnvoiEFS',label:'Date envoi EFS',type:'date'},
+    {key:'dateReceptionEFS',label:'Date réception EFS',type:'date'},
+    {key:'cnracl',label:'Affiliation CNRACL',type:'select',options:['OUI','NON','']},
+    {key:'formation',label:"Formation intégration",type:'select',options:['OUI','NON','']},
     {key:'sarcp',label:'SARCP Art.38',type:'text'},{key:'observations',label:'Observations',type:'textarea',full:true}],
-    cols:['matricule','nom','prenom','grade','pole','typeStage','debutStage','titularisation']},
+    cols:['nom','prenom','grade','pole','typeStage','debutStage','titularisation','dateEnvoiECS','dateReceptionECS']},
   apprentis:{title:'Apprentis',fields:[
     {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
     {key:'age',label:'Âge',type:'number'},{key:'typeContrat',label:'Type contrat',type:'text'},
-    {key:'numContrat',label:'N° contrat',type:'text'},{key:'dateDebut',label:'Date début',type:'date'},{key:'dateFin',label:'Date fin',type:'date'},
-    {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'},
-    {key:'maitre',label:"Maître apprentissage",type:'text'},{key:'maNbi',label:'MA NBI',type:'select',options:['OUI','NON','']},
+    {key:'numContrat',label:'N° contrat',type:'text'},{key:'dateDebut',label:'Date début',type:'date'},
+    {key:'dateFin',label:'Date fin',type:'date'},{key:'pole',label:'Pôle',type:'select',options:POLES},
+    {key:'service',label:'Service',type:'text'},{key:'maitre',label:"Maître apprentissage",type:'text'},
+    {key:'maNbi',label:'MA NBI',type:'select',options:['OUI','NON','']},
     {key:'changements',label:'Changements rémunération',type:'textarea',full:true}],
-    cols:['matricule','nom','prenom','age','dateDebut','dateFin','pole','service','maitre']},
+    cols:['nom','prenom','age','dateDebut','dateFin','pole','service','maitre']},
   experts:{title:'Experts',fields:[
     {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
     {key:'gestion',label:'Gestion',type:'text'},{key:'positionAdmin',label:'Position administrative',type:'text'},
     {key:'dateDebutPos',label:'Début position',type:'date'},{key:'dateFinPos',label:'Fin position',type:'date'},
     {key:'dateDebutSit',label:'Début situation',type:'date'},{key:'dateFinSit',label:'Fin situation',type:'date'},
     {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'}],
-    cols:['matricule','nom','prenom','gestion','positionAdmin','dateDebutPos','dateFinPos','pole']},
+    cols:['nom','prenom','gestion','positionAdmin','dateDebutPos','dateFinPos','pole']},
   detach_sort:{title:'Détachements sortants',fields:[
     {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
     {key:'grade',label:'Grade',type:'text'},{key:'positionAdminCode',label:'Code position',type:'text'},
     {key:'positionAdmin',label:'Position administrative',type:'text'},{key:'codeDet',label:'Code détachement',type:'text'},
-    {key:'orgAccueil',label:"Organisme d'accueil",type:'text'},{key:'dateDebut',label:'Date début',type:'date'},{key:'dateFin',label:'Date fin',type:'date'},
-    {key:'codeGestion',label:'Code gestion',type:'text'},{key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'},
+    {key:'orgAccueil',label:"Organisme d'accueil",type:'text'},{key:'dateDebut',label:'Date début',type:'date'},
+    {key:'dateFin',label:'Date fin',type:'date'},{key:'codeGestion',label:'Code gestion',type:'text'},
+    {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'},
     {key:'remarques',label:'Remarques',type:'textarea',full:true},{key:'contacts',label:'Contacts',type:'text',full:true}],
-    cols:['matricule','nom','prenom','grade','orgAccueil','dateDebut','dateFin','pole']},
+    cols:['nom','prenom','grade','orgAccueil','dateDebut','dateFin','pole']},
   detach_entr:{title:'Détachements entrants',fields:[
     {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
-    {key:'statut',label:'Statut',type:'text'},{key:'ventilBudget',label:'Ventilation budgétaire',type:'text'},
+    {key:'statut',label:'Statut',type:'text'},{key:'ventilBudget',label:'Ventil. budgétaire',type:'text'},
     {key:'grade',label:'Grade',type:'text'},{key:'dateNomination',label:'Nomination',type:'date'},
     {key:'dateAnciennete',label:"Ancienneté",type:'date'},{key:'dateEntreeStatut',label:'Entrée statut',type:'date'},
     {key:'dateDebut',label:'Début',type:'date'},{key:'dateFin',label:'Fin',type:'date'},
     {key:'detachLibelle',label:'Détachement',type:'text'},{key:'orgOrigine',label:"Organisme d'origine",type:'text'},
     {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'},
     {key:'contactAdmin',label:"Contact admin",type:'text',full:true}],
-    cols:['matricule','nom','prenom','grade','orgOrigine','dateDebut','dateFin','pole']},
+    cols:['nom','prenom','grade','orgOrigine','dateDebut','dateFin','pole']},
   mater:{title:'Maternité',fields:[
     {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'matricule',label:'Matricule',type:'text'},
     {key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},{key:'statut',label:'Statut',type:'text'},
-    {key:'datePrevue',label:'Date prévue',type:'date'},{key:'dateReelle',label:'Date réelle',type:'date'},
+    {key:'datePrevue',label:'Date accouchement prévue',type:'date'},{key:'dateReelle',label:'Date accouchement réelle',type:'date'},
     {key:'grossessePatho',label:'Grossesse patho.',type:'select',options:['OUI','NON','']},
     {key:'dateDebutArret',label:'Début arrêt',type:'date'},{key:'dateFinArret',label:'Fin arrêt',type:'date'},
     {key:'arreteFait',label:'Arrêté fait',type:'select',options:['OUI','NON','']},
@@ -534,15 +529,17 @@ const SCHEMAS_BASE = {
     {key:'couchesPatho',label:'Couches patho',type:'select',options:['OUI','NON','']},
     {key:'arreteModif',label:'Arrêté modif.',type:'select',options:['OUI','NON','']},
     {key:'signalIJSS',label:'Signal IJSS',type:'select',options:['OUI','NON','']},
+    {key:'envoiFormulaire',label:'Envoi formulaire',type:'select',options:['OUI','NON','']},
+    {key:'suppressionTransport',label:'Suppression transport',type:'select',options:['OUI','NON','']},
     {key:'observations',label:'Observations',type:'textarea',full:true}],
-    cols:['matricule','nom','prenom','pole','statut','datePrevue','dateReelle','arreteFait','saisieAstre']},
+    cols:['nom','prenom','pole','statut','datePrevue','dateReelle','arreteFait','saisieAstre']},
   parental:{title:'Congé parental',fields:[
     {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
     {key:'grade',label:'Grade',type:'text'},{key:'positionAdmin',label:'Position administrative',type:'text'},
     {key:'dateDebut',label:'Date début',type:'date'},{key:'dateFin',label:'Date fin',type:'date'},
     {key:'codeGestion',label:'Code gestion',type:'text'},{key:'pole',label:'Pôle',type:'select',options:POLES},
     {key:'service',label:'Service',type:'text'},{key:'observations',label:'Observations',type:'textarea',full:true}],
-    cols:['matricule','nom','prenom','grade','dateDebut','dateFin','pole','service']},
+    cols:['nom','prenom','grade','dateDebut','dateFin','pole','service']},
   indispo:{title:'Indisponibilité physique',fields:[
     {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'matricule',label:'Matricule',type:'text'},
     {key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
@@ -552,7 +549,7 @@ const SCHEMAS_BASE = {
     {key:'demandeAgentRecep',label:'Demande agent',type:'select',options:['OUI','NON','']},
     {key:'motifDemande',label:'Motif',type:'text'},{key:'conseilMedical',label:'Conseil médical',type:'select',options:['OUI','NON','']},
     {key:'dateExpertise',label:'Date expertise',type:'date'},{key:'observations',label:'Observations',type:'textarea',full:true}],
-    cols:['matricule','nom','prenom','pole','positionAdmin','dateDebut','dateFin','dateRelance']},
+    cols:['nom','prenom','pole','positionAdmin','dateDebut','dateFin','dateRelance']},
   tpartiel:{title:'Temps partiel',fields:[
     {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
     {key:'statut',label:'Statut',type:'text'},{key:'grade',label:'Grade',type:'text'},
@@ -560,13 +557,13 @@ const SCHEMAS_BASE = {
     {key:'dateDebut',label:'Date début',type:'date'},{key:'dateFin',label:'Date fin',type:'date'},
     {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'},
     {key:'observations',label:'Observations',type:'textarea',full:true}],
-    cols:['matricule','nom','prenom','grade','quotite','typeTP','dateDebut','dateFin','pole']},
+    cols:['nom','prenom','grade','quotite','typeTP','dateDebut','dateFin','pole']},
   sejour:{title:'Cartes de séjour',fields:[
     {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
     {key:'statut',label:'Statut',type:'text'},{key:'nationalite',label:'Nationalité',type:'text'},
     {key:'numeroCarte',label:'N° carte séjour',type:'text'},{key:'dateExpiration',label:'Date expiration',type:'date'},
     {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'}],
-    cols:['matricule','nom','prenom','nationalite','numeroCarte','dateExpiration','pole']},
+    cols:['nom','prenom','nationalite','numeroCarte','dateExpiration','pole']},
   tpt:{title:'Temps partiel thérapeutique',fields:[
     {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
     {key:'positionAdmin',label:'Position administrative',type:'text'},{key:'tauxRemuneration',label:'Taux rémunération',type:'text'},
@@ -574,7 +571,7 @@ const SCHEMAS_BASE = {
     {key:'typeTPT',label:'Type TPT',type:'text'},{key:'date1erTPT',label:'1ère date TPT',type:'date'},
     {key:'dateDebut',label:'Début TPT',type:'date'},{key:'dateFin',label:'Fin TPT',type:'date'},
     {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'}],
-    cols:['matricule','nom','prenom','typeTPT','tauxRemuneration','dateDebut','dateFin','pole']},
+    cols:['nom','prenom','typeTPT','tauxRemuneration','dateDebut','dateFin','pole']},
   at:{title:'Accidents du travail',fields:[
     {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
     {key:'typeAT',label:'Type',type:'select',options:['Accident travail','Accident trajet']},
@@ -588,34 +585,11 @@ const SCHEMAS_BASE = {
     {key:'imputabilite',label:'Imputabilité',type:'select',options:['OUI','NON','']},
     {key:'transmissionFinal',label:'Transmission final',type:'select',options:['OUI','NON','']},
     {key:'observations',label:'Observations',type:'textarea',full:true}],
-    cols:['matricule','nom','prenom','typeAT','dateAT','arretTravail','dateDebutArret','dateFinArret']},
+    cols:['nom','prenom','typeAT','dateAT','arretTravail','dateDebutArret','dateFinArret']},
 };
 
-function getSchema(schemaKey) {
-  const base = SCHEMAS_BASE[schemaKey];
-  if (!base) {
-    // Onglet custom : schéma minimal
-    return {title: schemaKey, fields:[
-      {key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
-      {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'remarques',label:'Remarques',type:'textarea',full:true}
-    ], cols:['nom','prenom','pole','remarques']};
-  }
-  // Mapper la clé de schéma → clé de table pour les colonnes custom
-  const tableKey = viewToTableKey(schemaKey);
-  const customDefs = getCustomColDefs(tableKey);
-  // Ajouter les champs custom
-  const fields = [...base.fields, ...customDefs.map(c=>({
-    key:c.key, label:c.label, type:c.type||'text', options:c.options||null, full:false, isCustom:!c.isImportance, isImportance:c.isImportance
-  }))];
-  // Colonnes affichées : respecter l'ordre stocké sinon défaut
-  const storedCols = ADMIN.visibleCols[tableKey];
-  const allDefCols = [...base.cols, ...customDefs.map(c=>c.key)];
-  const cols = storedCols ? storedCols.filter(k=> fields.some(f=>f.key===k)) : allDefCols;
-  return {...base, fields, cols};
-}
-
-function viewToTableKey(viewOrSchema) {
-  const map = {
+function viewToTableKey(viewOrSchema){
+  const map={
     'paye':'paye_','n1':'paye_N1','cdd':'tdb_cdd','cnp':'tdb_cnp','stagiaires':'tdb_stagiaires',
     'apprentis':'tdb_apprentis','experts':'tdb_experts','dispo':'tdb_dispo',
     'detach_sort':'tdb_detach_sort','detach-sort':'tdb_detach_sort',
@@ -624,6 +598,88 @@ function viewToTableKey(viewOrSchema) {
     'tpartiel':'tdb_tpartiel','sejour':'tdb_sejour','tpt':'tdb_tpt','at':'tdb_at'
   };
   return map[viewOrSchema] || viewOrSchema;
+}
+
+function getSchema(schemaKey){
+  const base=SCHEMAS_BASE[schemaKey];
+  const tableKey=viewToTableKey(schemaKey);
+  const customDefs=getCustomColDefs(tableKey);
+
+  if(!base){
+    // Schéma inconnu → générer depuis les données chargées + colonnes custom
+    const dataKeys = getDataKeys(tableKey);
+    const fields = dataKeys.map(k => {
+      const cdef = customDefs.find(c=>c.key===k);
+      if(cdef) return {key:k, label:cdef.label, type:cdef.type||'text', options:cdef.options||null};
+      return {key:k, label:k.replace(/_col_/,'').replace(/_\d+$/,'').replace(/_/g,' '), type:isDateCol(k)?'date':'text'};
+    });
+    return {title:schemaKey, fields, cols:dataKeys.slice(0,10)};
+  }
+
+  // Onglet dynamique : utiliser le schéma construit par _rebuildDynSchema
+  // qui garantit la correspondance exacte avec les clés des données
+  if(base.isDynamic){
+    const allFields = [...base.fields];
+    // Ajouter l'importance si activée
+    if(ADMIN.importanceEnabled[tableKey] && !allFields.some(f=>f.key==='_importance')){
+      allFields.unshift({key:'_importance',label:'Importance',type:'select',options:IMPORTANCES,isImportance:true});
+    }
+    const storedCols = ADMIN.visibleCols[tableKey];
+    const cols = storedCols
+      ? storedCols.filter(k=>allFields.some(f=>f.key===k))
+      : base.cols || allFields.map(f=>f.key);
+    return {...base, fields:allFields, cols};
+  }
+
+  // Schéma connu : fusionner base + custom + colonnes dynamiques découvertes au chargement
+  const allFields = [...base.fields];
+  const baseKeys = new Set(base.fields.map(f=>f.key));
+
+  customDefs.forEach(c => {
+    if(!baseKeys.has(c.key)) {
+      allFields.push({key:c.key, label:c.label, type:c.type||'text', options:c.options||null,
+                      full:false, isCustom:!c.isImportance&&!c.isDynamic,
+                      isImportance:!!c.isImportance, isDynamic:!!c.isDynamic});
+      baseKeys.add(c.key);
+    }
+  });
+
+  const storedCols=ADMIN.visibleCols[tableKey];
+  const defaultCols=[...base.cols, ...customDefs.map(c=>c.key)];
+  const cols=storedCols ? storedCols.filter(k=>allFields.some(f=>f.key===k)) : defaultCols;
+  return {...base, fields:allFields, cols};
+}
+
+// Retourne toutes les clés présentes dans les données chargées pour un tableKey
+function getDataKeys(tableKey){
+  const data = DB[tableKey] || [];
+  if(!data.length) {
+    // Pas de données : retourner les cols de base
+    const base = TDB_MAP_BASE[tableKey]?.cols || PAYE_COLS_BASE;
+    return [...base];
+  }
+  // Collecter toutes les clés présentes (sauf 'id')
+  const allKeys = new Set();
+  data.forEach(r => Object.keys(r).forEach(k => { if(k!=='id') allKeys.add(k); }));
+  // Trier : colonnes de base d'abord, puis custom/dynamiques
+  const baseCols = TDB_MAP_BASE[tableKey]?.cols || PAYE_COLS_BASE;
+  const ordered = baseCols.filter(k=>allKeys.has(k));
+  allKeys.forEach(k => { if(!ordered.includes(k)) ordered.push(k); });
+  return ordered;
+}
+
+function getEffectiveCols(tableKey){
+  const base=tableKey==='paye_'?[...PAYE_COLS_BASE]:tableKey==='paye_N1'?[...N1_COLS]:TDB_MAP_BASE[tableKey]?[...TDB_MAP_BASE[tableKey].cols]:[];
+  const custom=(ADMIN.customCols[tableKey]||[]).map(c=>c.key);
+  if(ADMIN.importanceEnabled[tableKey]) base.push('_importance');
+  return [...base,...custom];
+}
+
+function getCustomColDefs(tableKey){
+  const defs=[];
+  if(ADMIN.importanceEnabled[tableKey]) defs.push({key:'_importance',label:'Importance',type:'select',options:IMPORTANCES,isImportance:true});
+  // Inclure les colonnes dynamiques découvertes au chargement (isDynamic:true)
+  return [...defs,...(ADMIN.customCols[tableKey]||[])];
 }
 
 const VIEW_MAP={
@@ -663,67 +719,696 @@ let dirtyPaye=false, dirtyTdb=false;
 // ═══════════════════════════════════════════════════════════
 // EXCEL READ/WRITE
 // ═══════════════════════════════════════════════════════════
-function excelDateToISO(v){
-  if(!v)return'';
-  if(v instanceof Date)return v.toISOString().slice(0,10);
-  if(typeof v==='number'){const d=XLSX.SSF.parse_date_code(v);if(!d)return String(v);return`${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`}
-  if(typeof v==='string'){const c=v.trim();if(/^\d{4}-\d{2}-\d{2}/.test(c))return c.slice(0,10);const d=new Date(c);if(!isNaN(d))return d.toISOString().slice(0,10);}
-  return String(v);
+// ─── CONVERSION DATES ─────────────────────────────────────
+// Convertit toute valeur lue depuis Excel en chaîne ISO YYYY-MM-DD
+function excelDateToISO(v) {
+  if(!v && v !== 0) return '';
+
+  // Objet Date JS (SheetJS avec cellDates:true) — corriger le décalage UTC
+  if(v instanceof Date) {
+    if(isNaN(v.getTime())) return '';
+    // Utiliser les composantes locales pour éviter le décalage de fuseau horaire
+    const y = v.getFullYear();
+    const mo = String(v.getMonth()+1).padStart(2,'0');
+    const d = String(v.getDate()).padStart(2,'0');
+    return `${y}-${mo}-${d}`;
+  }
+
+  // Numéro de série Excel (ex: 43891)
+  if(typeof v === 'number') {
+    if(v === 0) return '';
+    // Excel: 1 = 1900-01-01, avec le bug intentionnel du 29/02/1900
+    const serial = v > 60 ? v - 1 : v; // corriger le bug 1900
+    const d = new Date(Date.UTC(1900, 0, 1) + (serial - 1) * 86400000);
+    if(isNaN(d.getTime())) return '';
+    const y = d.getUTCFullYear();
+    const mo = String(d.getUTCMonth()+1).padStart(2,'0');
+    const day = String(d.getUTCDate()).padStart(2,'0');
+    return `${y}-${mo}-${day}`;
+  }
+
+  // Chaîne
+  if(typeof v === 'string') {
+    const c = v.trim();
+    if(!c) return '';
+    // Déjà au format ISO
+    if(/^\d{4}-\d{2}-\d{2}/.test(c)) return c.slice(0,10);
+    // Format DD/MM/YYYY (format français)
+    if(/^\d{2}\/\d{2}\/\d{4}/.test(c)) {
+      const [d,mo,y] = c.split('/');
+      return `${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`;
+    }
+    // Essai de parsing générique
+    const d = new Date(c);
+    if(!isNaN(d.getTime())) {
+      const y=d.getFullYear(), mo=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
+      return `${y}-${mo}-${day}`;
+    }
+  }
+  return '';
 }
 
-function sheetToRecords(ws, cols, tableKey) {
-  if(!ws) return [];
-  const raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
-  if(raw.length < 2) return [];
-  // Detect extra columns beyond base (custom cols added to Excel)
-  const headerRow = raw[0] || [];
-  const customColsAdmin = tableKey ? (ADMIN.customCols[tableKey]||[]) : [];
-  const impEnabled = tableKey ? ADMIN.importanceEnabled[tableKey] : false;
-  // Build extended cols list: base + importance + custom (matched by header label)
-  const extCols = [...cols];
-  if(impEnabled && !extCols.includes('_importance')) {
-    const impIdx = headerRow.findIndex(h=>String(h).toLowerCase()==='importance');
-    if(impIdx >= extCols.length) extCols.push('_importance');
+// Formater une date ISO pour l'affichage (DD/MM/YYYY)
+function isoToDisplay(iso) {
+  if(!iso || iso.length < 10) return '';
+  const [y,mo,d] = iso.split('-');
+  if(!y||!mo||!d) return iso;
+  return `${d}/${mo}/${y}`;
+}
+
+// ─── DÉTECTION DES COLONNES DATE ──────────────────────────
+// Construire un set des indices de style qui sont des dates dans un workbook
+function buildDateStyleSet(wb) {
+  // SheetJS expose les styles via wb.SSF et les cellules via cell.s (index de style)
+  // On utilise aussi une heuristique sur le nom de colonne
+  const STD_DATE_FMTIDS = new Set([14,15,16,17,18,19,20,21,22,45,46,47]);
+  const dateStyleIndices = new Set();
+
+  // Récupérer les styles depuis wb.Styles si disponible
+  if(wb.Styles && wb.Styles.Formats) {
+    try {
+      const fmts = wb.Styles.Formats; // {numFmtId: formatCode}
+      if(wb.SSF) {
+        // Chercher dans wb.SSF les formats date
+        Object.entries(wb.SSF).forEach(([id,fmt]) => {
+          const fmtId = parseInt(id);
+          if(STD_DATE_FMTIDS.has(fmtId) || (fmt && /[dy]/i.test(fmt) && !/^[h:ms aAp\/\\.,"]+$/.test(fmt))) {
+            dateStyleIndices.add(fmtId);
+          }
+        });
+      }
+    } catch(e) {}
   }
-  customColsAdmin.forEach(c => {
-    if(!extCols.includes(c.key)) {
-      const idx = headerRow.findIndex(h => String(h).toLowerCase() === c.label.toLowerCase());
-      if(idx >= 0) extCols.push(c.key);
+
+  return dateStyleIndices;
+}
+
+// Noms de colonnes qui contiennent des dates (heuristique fiable)
+function isDateCol(colKey) {
+  const k = colKey.toLowerCase();
+  return k.includes('date') || k.startsWith('fin') || k==='debutstage' ||
+         k==='titularisation' || k==='date1erdispo' || k==='datedebut' ||
+         k==='datefin' || k==='fin5ans' || k==='fin10ans' || k==='dateat' ||
+         k==='dateimpact' || k==='dateprevue' || k==='datereelle' ||
+         k==='daterelance' || k==='dateexpertise' || k==='datecommission' ||
+         k==='date1ercontrat' || k==='dateentree' || k==='dateentreestatut' ||
+         k==='datenomination' || k==='dateanciennete' || k==='date1ertpt';
+}
+
+// ─── LECTURE DES FEUILLES ─────────────────────────────────
+// Lire une feuille Excel en respectant strictement la correspondance colonnes
+// colKeys = liste ordonnée des clés internes, dans le même ordre que les colonnes Excel
+// dataStartRow = index 0-based de la première ligne de données (après en-têtes)
+// ─── CORRESPONDANCE EN-TÊTES → CLÉS INTERNES ─────────────
+// Normalise un en-tête Excel pour la comparaison
+function normalizeHeader(h) {
+  return String(h||'')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // supprimer accents
+    .replace(/[^a-z0-9]/g,'') // garder seulement alphanum
+    .trim();
+}
+
+// Table de correspondance : variations possibles d'en-tête → clé interne
+const HEADER_ALIASES = {
+  // ── IDENTITÉ ──────────────────────────────────────────────
+  matricule:        ['matricule','mat','mat.'],
+  nom:              ['nom'],
+  prenom:           ['prenom','prénom'],
+  age:              ['age','âge'],
+  pole:             ['pole','pôle'],
+  service:          ['service'],
+  grade:            ['grade','gradelibelle','grade(libelle)','grade(libell)'],
+  statut:           ['statut'],
+  observations:     ['observation','observations'],
+  remarques:        ['remarque','remarques'],
+
+  // ── CAHIER DE PAYE — colonnes spécifiques ─────────────────
+  type:             ['type'],          // E:'TYPE' dans JANV-DEC paye
+  newFlag:          ['new'],           // F:'NEW'
+  impactPaye:       ['impactpaye'],    // G:'IMPACT PAYE'
+  gecco:            ['geccoetpj','gecco'],  // J:'GECCO ET PJ'
+  paye:             ['paye'],          // K:'PAYE'
+  pref:             ['pref'],          // L:'PREF'
+  bulletinElectro:  ['bulletinelectro','bulletinelectronique'], // M:'BULLETINELECTRO'
+  moisPaye:         ['moisDepaye','moisdepaye','moispaye'],
+  dateImpact:       ['dateimpact'],
+
+  // ── DATES CONTRAT (génériques) ────────────────────────────
+  dateDebut:        ['datedebutducontrat','datedebutcontratencours','debutcontratencours','datedebutcontrat',
+                     'datedebutducontrat','datedebuttempspartielencours',
+                     'datedebutdispoencours','datedebutclmcldencours',
+                     'datedebutpositionadministrativeencours',
+                     'datedebutdetachement','datedebutarret',
+                     'datedebuttpten cours','datedebutdisponibilite'],
+  dateFin:          ['datefinducontrat','datedefincontratencours',
+                     'fincontratencours','datefincontratencours','datefincontrat',
+                     'datefintempspartielencours','datefinclmcldencours',
+                     'datefindetachement','datefinpositionadministrativeencours',
+                     'datefinpositionadministrative',
+                     'datefindisp','fincontrat'],
+  date1erContrat:   ['datedu1ercontratsaisidansastre','1ercddsaisidansastre',
+                     '1ercddsaisi','datedu1ercontrat','date1ercontrat',
+                     '1ercontratsaisidansastre','datedupremiercontrat',
+                     'datedu1ercdd','1ercdd','1ercontrat'],
+  dateEntree:       ['dateDentreeDanslorganisme','dateEntreeDanslOrganisme',
+                     'dateentreeDansLorganisme','dateentree'],
+  dateEntreeStatut: ['dateDentreeDansLeStatut','dateentreeDanslestatut',
+                     'dateentreestatut','dateentreeStatut'],
+
+  // ── DISPONIBILITÉS ────────────────────────────────────────
+  date1erDispo:     ['date1erdisponibilite','date1erdispo','datedu1erdisponibilite',
+                     'date1eredisponibilite'],
+  fin5ans:          ['findes5ans','fin5ans','findedes5ans'],
+  fin10ans:         ['findes10ans','fin10ans','findedes10ans'],
+  codeGestion:      ['codegestion'],
+  codeDispo:        ['codedispo'],
+  controleCode:     ['controlecode','contrôlecode'],
+  detail:           ['detailn4ds','detail'],
+  categorie:        ['categorieagent','categorie','categorieagent'],
+  positionAdmin:    ['positionadministrative','positionadmin','positionadm',
+                     'positionadministrative(libelle)'],
+  positionAdminCode:['positionadministrative(code)','positionadministrativecode'],
+
+  // ── CONTRATS ──────────────────────────────────────────────
+  typeContrat:      ['typedecontratlibell','typedecontrat','typecontrat',
+                     'typedecontrat(libelle)'],
+  motifCode:        ['motifdecode','motifdecontrat(code)','motif(code)',
+                     'motifcode','motifdecode)','motifdecodeducontrat'],
+  motifLibelle:     ['motifdecontrat(libelle)','motiflibelle','motif(libelle)',
+                     'motifdecodelibell','motifdelibelle'],
+  ventilBudget:     ['ventilationbudgetaire','ventilationbudgetaire(code)',
+                     'ventilationbudg','ventilbudget'],
+
+  // ── EXPERTS & POSITIONS ADMINISTRATIVES ───────────────────
+  dateDebutPos:     ['datedebutpositionadministrative','datedebutpos',
+                     'datedebutpositionadm','datedebutposadm'],
+  dateFinPos:       ['datefindelapositionadministrative',
+                     'datefinpositionadministrative','datefinpos',
+                     'datefinpositionadm','datefinposadm',
+                     'datedeFinpositionadministrative'],
+  dateDebutSit:     ['dateDedebutsituationadministrative','datededebutsituationadministrative',
+                     'datedebutsituationadministrative'],
+  dateFinSit:       ['datedefinsituadministrative','dateDeFinsituationadministrative','datefinsituationadministrative'],
+  gestion:          ['gestionlibelle','gestion(libelle)','gestion'],
+
+  // ── DÉTACHEMENTS ──────────────────────────────────────────
+  dateNomination:   ['datedenominationdansgrade','datedenominationdanslegrade',
+                     'datenominationdansgrade','datenominationdanslegrade',
+                     'datedenominationdanslegrade','datenomination',
+                     'datedenominationdanslegrade'],
+  dateAnciennete:   ['dateanciennetedanslegrade','dateanciennete',
+                     'dateDAncienneteDansLeGrade'],
+  codeDet:          ['codedetachement','codetachement'],
+  orgAccueil:       ['organismedaccueil','orgaccueil'],
+  orgOrigine:       ['organismedorigine','orgorigine'],
+  detachLibelle:    ['detachementlibelle','detachment(libelle)','detachlibelle'],
+  contactAdmin:     ['contactadmin','contactadministrateur',
+                     'contactadmindorigine'],
+  contacts:         ['contacts','contact'],
+
+  // ── MATERNITÉ ─────────────────────────────────────────────
+  datePrevue:       ['dateDaccouchementprevue','dateprevue',
+                     'dateDaccouchementprevue'],
+  dateReelle:       ['dateDaccouchementreelle','datereelle'],
+  grossessePatho:   ['grossessepathologique','grossessepatho','grossessepathologique'],
+  dateDebutArret:   ['datedebutarret'],
+  dateFinArret:     ['datefinArret'],
+  arreteFait:       ['arretefait'],
+  saisieAstre:      ['saisie','saisieastre'],
+  acteNaissance:    ['actenaissance','actedenaissance'],  // M:'Acte de naissance'
+  couchesPatho:     ['couchespathologiques','couchespatho'],
+  arreteModif:      ['arretModificatif','arretemodificatif'],
+  signalIJSS:       ['signalementijss'],
+  envoiFormulaire:  ['envoiformulaire','envoiformulairedeclaration'],
+  suppressionTransport: ['suppressiontransport','suppressiontransportetteLetravail'],
+
+  // ── STAGIAIRES ────────────────────────────────────────────
+  typeStage:        ['typedestage','typestage'],
+  debutStage:       ['debutdestage','debutstage','débutdestage'],
+  titularisation:   ['titularisation'],
+  noticeECS:        ['datealaquelleenvoyerlevaluationencoursdestageecs',
+                     'dataaquallelenvoyerlevaluationencoursdestage',
+                     'dataaquallelenvoyerlecs','dateaqualleenvoyer',
+                     'dateaquelleenvoyer','dataaquallenvoyer',
+                     'dateaquelleenvoyer'],  // col I: 'Date à laquelle envoyer l evaluation en cours de stage (ECS)'
+  dateEnvoiECS:     ['datedenvoiecs','dateDenvoiEcs'],
+  dateReceptionECS: ['dateDereceptionecs','datereceptionecs'],
+  noticeEFS:        ['datealaquelleenvoyerlevaluationdefindestageefs',
+                     'dataaquallelenvoyerlevaluationdefindustage',
+                     'dataaquallelenvoyerlefs','dateaquallelenvoyerlefs',
+                     'dateaquelleenvoyerlefs'],  // col L: 'Date à laquelle envoyer l evaluation de fin de stage (EFS)'
+  dateEnvoiEFS:     ['datedenvoiefs','dateDenvoiEfs'],
+  dateReceptionEFS: ['dateDereceptionefs','datereceptionefs'],
+  cnracl:           ['affiliationcnracl','cnracl'],
+  formation:        ['formationDintegration','formation'],
+  sarcp:            ['sarcpdelatitrart38','sarcp'],
+
+  // ── INDISPONIBILITÉ PHYSIQUE ──────────────────────────────
+  dateRelance:      ['dateDerelanceagent','daterelance',
+                     'datederelanceagentrenouvelmentouReintegration'],
+  demandeAgentRecep:['demandeDelagentreceptionnee','demandeagentreceptionnee',
+                     'demandeagent','demandedelagentreceptionnee'],
+  motifDemande:     ['motifdeDeLademande','motifdemande',
+                     'motivdemande','motifdeLademande'],  // J:'Motif de la demande'
+  conseilMedical:   ['faudratilsoliciterLeConseilmedical','conseilmedical',
+                     'faUdratiLsoliciter'],
+  dateExpertise:    ['dateexpertise','datexprochaineexpertise',
+                     'datprochaine','dateprochaine',
+                     'dateprochaineexpertiseparlaregion'],  // L:'Date prochaine expertise'
+
+  // ── TEMPS PARTIEL ─────────────────────────────────────────
+  quotite:          ['quotite','quotité'],
+  typeTP:           ['typedetempspartiel','typetp'],
+  // ── CARTES SÉJOUR ─────────────────────────────────────────
+  nationalite:      ['nationalite','nationalité'],
+  numeroCarte:      ['numerodecartedesejour','numerocarte','numerodecartedesejour'],
+  dateExpiration:   ['dateDexpirationcartedesejour','dateexpiration'],
+
+  // ── TPT ───────────────────────────────────────────────────
+  tauxRemuneration: ['tauxDeremuneration','tauxremuneration'],
+  coeffTaux:        ['coefftauxtherapeutique','coefftaux'],
+  codeTpt:          ['codetpt'],
+  typeTPT:          ['typedetpt','typetpt'],
+  date1erTPT:       ['1eredatetptsaisiedansastre','date1ertpt'],
+
+  // ── ACCIDENTS DU TRAVAIL ──────────────────────────────────
+  typeAT:           ['accidenttravailaccidenttrajet','typeat','typeaccident'],
+  dateAT:           ['dateat','dateaccident'],
+  arretTravail:     ['arretdetravail','arrêtdetravail'],
+  dateDebutSoins:   ['datedebutsoins'],
+  soins:            ['soins'],  // I:'Soins' dans AT (OUI/NON)
+  dateFinSoins:     ['datefinsoins'],
+  saisineCommission:['saisinecommission','saisinecommissiondereform'],
+  avisMedecinExpert:['avismedecinexpert','avismedecin','avisdumedecin','avismedecinsexpert','avismédecin'],
+  dateCommission:   ['datecommission'],
+  imputabilite:     ['imputabilite','imputabilité'],
+  transmissionFinal:['transmissionfinal','transmissionfinale'],
+
+  // ── DIVERS ────────────────────────────────────────────────
+  propositionCDI:   ['propositioncdi'],
+  numContrat:       ['numerodecontrat','numcontrat'],
+  maitre:           ['maitreDapprentissage','maitre'],
+  maNbi:            ['maavecnbioui','manbi','maavecnbioui/non'],
+  changements:      ['changementsDeremuner','changements'],
+  codeGestion:      ['codegestion'],
+};
+
+// Construire l'index de recherche rapide
+// IMPORTANT: On n'ajoute PAS la clé elle-même pour les clés génériques
+// dont la normalisation correspond à des en-têtes communs ambigus
+const HEADER_LOOKUP = {};
+// Clés à ne pas auto-enregistrer car elles causent des faux positifs
+// (ex: 'dateDebut' → 'datedebut' matcherait 'Date début' dans AT où c'est dateDebutArret)
+const SKIP_KEY_SELF_REGISTER = new Set([
+  'dateDebut','dateFin','dateDebutArret','dateFinArret','dateDebutSoins','dateFinSoins',
+  'dateDebutPos','dateFinPos','dateDebutSit','dateFinSit'
+]);
+Object.entries(HEADER_ALIASES).forEach(([key, aliases]) => {
+  aliases.forEach(alias => {
+    HEADER_LOOKUP[normalizeHeader(alias)] = key;
+  });
+  // N'ajouter la clé elle-même que si elle n'est pas dans la liste des clés ambiguës
+  if(!SKIP_KEY_SELF_REGISTER.has(key)) {
+    HEADER_LOOKUP[normalizeHeader(key)] = key;
+  }
+});
+
+// Résoudre un en-tête Excel → clé interne
+function resolveHeader(headerValue) {
+  const n = normalizeHeader(headerValue);
+  if(!n) return null;
+  // Correspondance exacte (prioritaire)
+  if(HEADER_LOOKUP[n]) return HEADER_LOOKUP[n];
+  // Correspondance partielle — l'entrée CONTIENT l'alias (sens unique)
+  // On cherche la correspondance la PLUS LONGUE pour éviter les faux positifs
+  // Ex: 'datededebutsituationadministrative' (34) ne doit PAS matcher 'datededebut' (11)
+  // car l'alias est PLUS LONG que l'entrée → c'est l'entrée qui est trop courte/générique
+  let bestMatch = null;
+  let bestLen = 0;
+  for(const [alias, key] of Object.entries(HEADER_LOOKUP)) {
+    if(alias.length < 5) continue;
+    // L'entrée doit CONTENIR l'alias (l'alias est sous-ensemble/suffixe de l'entrée)
+    // Cela signifie que l'entrée est plus spécifique ou au moins aussi spécifique que l'alias
+    // On N'ACCEPTE PAS que l'alias contienne l'entrée (trop ambigu)
+    if(n.includes(alias)) {
+      if(alias.length > bestLen) {
+        bestLen = alias.length;
+        bestMatch = key;
+      }
+    }
+  }
+  return bestMatch;
+}
+
+// ─── LECTURE UNIVERSELLE — CAPTURE 100% DES DONNÉES ──────
+// Principes :
+// 1. Détecter la vraie ligne d'en-tête (première ligne non vide)
+// 2. Mapper les colonnes connues via HEADER_ALIASES
+// 3. Pour les colonnes inconnues : créer une clé dynamique et les conserver
+// 4. Aucune donnée n'est jamais ignorée
+function sheetToRecords(ws, colKeys, tableKey, dataFirstRow) {
+  if(!ws) return [];
+  const firstDataRow = (dataFirstRow !== undefined ? dataFirstRow : 1);
+  const raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:true, cellDates:false});
+
+  // Trouver la vraie ligne d'en-tête : la première ligne non-vide dans raw
+  let headerIdx = 0;
+  for(let i = 0; i < Math.min(raw.length, 5); i++) {
+    if(raw[i] && raw[i].some(c => c !== '' && c !== null && c !== undefined)) {
+      headerIdx = i;
+      break;
+    }
+  }
+  // La ligne de données commence après l'en-tête
+  // Mais si firstDataRow est spécifié explicitement, l'utiliser
+  const dataIdx = (dataFirstRow !== undefined) ? dataFirstRow : headerIdx + 1;
+
+  if(raw.length <= dataIdx) return [];
+
+  const headerRow = raw[headerIdx] || [];
+
+  // ── Construire le mapping complet : colonne Excel → clé interne ──
+  const colMap = {}; // index → key (clé connue ou générée)
+  const keyAssignedAt = {};
+
+  // 1. Mapping par en-tête réel (prioritaire)
+  headerRow.forEach((h, idx) => {
+    const hStr = String(h || '').replace(/\n/g, ' ').trim();
+    if(!hStr) return;
+    const resolved = resolveHeader(hStr);
+
+    if(resolved) {
+      if(keyAssignedAt[resolved] !== undefined) {
+        // Doublon : chercher la prochaine occurrence de la même clé dans colKeys
+        const alreadyUsed = new Set(Object.values(colMap));
+        const candidate = colKeys.find(k => k === resolved && !alreadyUsed.has(k));
+        if(candidate) { colMap[idx] = candidate; keyAssignedAt[candidate] = idx; }
+        else {
+          // Créer une clé suffixée pour éviter la perte de données
+          const dynKey = resolved + '_' + idx;
+          colMap[idx] = dynKey;
+        }
+      } else {
+        colMap[idx] = resolved;
+        keyAssignedAt[resolved] = idx;
+      }
+    } else {
+      // Colonne non reconnue → clé dynamique basée sur l'en-tête
+      const dynKey = '_col_' + normalizeHeader(hStr).slice(0, 20) + '_' + idx;
+      colMap[idx] = dynKey;
+      // Stocker le label original pour l'affichage — mais seulement si non déjà présent
+      if(tableKey) {
+        if(!ADMIN.customCols[tableKey]) ADMIN.customCols[tableKey] = [];
+        const existing = ADMIN.customCols[tableKey].find(c => c.key === dynKey);
+        if(!existing) {
+          ADMIN.customCols[tableKey].push({
+            key: dynKey,
+            label: hStr,  // Label exact de l'en-tête Excel
+            type: /date/i.test(hStr) ? 'date' : 'text',
+            options: null,
+            isDynamic: true
+          });
+        }
+      }
     }
   });
 
-  return raw.slice(1).filter(row=>!row.every(c=>c===''||c===null||c===undefined)).map(row=>{
-    const obj={id:nextId++};
-    extCols.forEach((col, j) => {
-      let v = j < row.length ? row[j] : '';
-      if(col.toLowerCase().includes('date')||col.startsWith('fin')||col==='debutStage'||col==='titularisation') v=excelDateToISO(v);
-      else v = v===null||v===undefined?'':String(v).trim();
-      obj[col]=v;
-    });
-    return obj;
+  // 2. Pour les clés attendues non encore mappées → fallback par position
+  const mappedKeys = new Set(Object.values(colMap));
+  colKeys.forEach((key, pos) => {
+    if(!mappedKeys.has(key) && pos < headerRow.length && !colMap[pos]) {
+      colMap[pos] = key;
+      mappedKeys.add(key);
+    }
   });
+
+  // 3. Colonnes custom admin et importance
+  const customColsAdmin = tableKey ? (ADMIN.customCols[tableKey]||[]) : [];
+  const impEnabled = tableKey ? ADMIN.importanceEnabled[tableKey] : false;
+  if(impEnabled) {
+    headerRow.forEach((h, idx) => {
+      if(!colMap[idx] && normalizeHeader(String(h||'')) === 'importance') colMap[idx] = '_importance';
+    });
+  }
+  customColsAdmin.forEach(c => {
+    if(!c.isDynamic && !mappedKeys.has(c.key)) {
+      const idx = headerRow.findIndex(h => normalizeHeader(String(h||'')) === normalizeHeader(c.label));
+      if(idx >= 0 && !colMap[idx]) { colMap[idx] = c.key; mappedKeys.add(c.key); }
+    }
+  });
+
+  // ── Lire toutes les lignes de données ──
+  const records = [];
+  for(let i = dataIdx; i < raw.length; i++) {
+    const row = raw[i];
+    if(!row || row.every(c => c === '' || c === null || c === undefined)) continue;
+
+    const obj = { id: nextId++ };
+    // Initialiser toutes les clés connues à ''
+    colKeys.forEach(k => { obj[k] = ''; });
+
+    // Remplir depuis le mapping complet (clés connues ET dynamiques)
+    Object.entries(colMap).forEach(([colIdxStr, key]) => {
+      const colIdx = parseInt(colIdxStr);
+      let v = row[colIdx];
+      if(v === null || v === undefined) v = '';
+
+      // Détecter si c'est une colonne date
+      const looksLikeDate = isDateCol(key) ||
+        /date/i.test(String(headerRow[colIdx] || '')) ||
+        (typeof v === 'number' && v > 40000 && v < 60000); // plage numéros série Excel
+
+      if(looksLikeDate && v !== '') {
+        const converted = excelDateToISO(v);
+        obj[key] = converted || String(v).trim();
+      } else {
+        const s = String(v).trim();
+        // Nettoyer les dates JS mal converties
+        if(s && (s.startsWith('Mon ') || s.startsWith('Tue ') || s.startsWith('Wed ') ||
+                  s.startsWith('Thu ') || s.startsWith('Fri ') || s.startsWith('Sat ') ||
+                  s.startsWith('Sun ') || s.includes('Invalid Date'))) {
+          obj[key] = excelDateToISO(new Date(s)) || s;
+        } else {
+          obj[key] = s;
+        }
+      }
+    });
+
+    records.push(obj);
+  }
+  return records;
 }
 
 function loadPayeWorkbook(wb){
-  wbPaye=wb;
-  MONTHS.forEach(m=>{DB['paye_'+m]=sheetToRecords(wb.Sheets[m], PAYE_COLS_BASE, 'paye_')});
-  const wsN1=wb.Sheets['N+1'];
-  if(wsN1){
-    const raw=XLSX.utils.sheet_to_json(wsN1,{header:1,defval:''});
-    DB['paye_N1']=raw.slice(2).filter(r=>!r.every(c=>c===''||c===null)).map(row=>{
-      const obj={id:nextId++};
-      N1_COLS.forEach((col,j)=>{let v=j<row.length?row[j]:'';if(col.includes('date'))v=excelDateToISO(v);else v=String(v??'').trim();obj[col]=v});
-      return obj;
-    });
+  wbPaye = wb;
+  const knownSheets = new Set([...MONTHS, 'N+1', 'PARAMETRAGE']);
+
+  // 1. Onglets mensuels connus
+  MONTHS.forEach(m => {
+    DB['paye_'+m] = sheetToRecords(wb.Sheets[m], PAYE_COLS_BASE, 'paye_', 1);
+  });
+  if(wb.Sheets['N+1']) {
+    DB['paye_N1'] = sheetToRecords(wb.Sheets['N+1'], N1_COLS, 'paye_N1', 3);
   }
-  const wsP=wb.Sheets['PARAMETRAGE'];
-  if(wsP){const raw=XLSX.utils.sheet_to_json(wsP,{header:1,defval:''});DB['params_paye']=raw.slice(1).filter(r=>r[0]).map(r=>({id:nextId++,type:String(r[0]||''),bulletins:String(r[1]||''),suivi:String(r[2]||''),pref:String(r[3]||''),newFlag:String(r[4]||'')}));}
+  if(wb.Sheets['PARAMETRAGE']) {
+    const raw = XLSX.utils.sheet_to_json(wb.Sheets['PARAMETRAGE'], {header:1, defval:'', raw:true, cellDates:false});
+    DB['params_paye'] = raw.slice(1).filter(r=>r[0]).map(r=>({
+      id:nextId++, type:String(r[0]||'').trim(), bulletins:String(r[1]||'').trim(),
+      suivi:String(r[2]||'').trim(), pref:String(r[3]||'').trim(), newFlag:String(r[4]||'').trim()
+    }));
+  }
+  // 2. Onglets inconnus du cahier de paye
+  (wb.SheetNames||[]).forEach(sn => {
+    if(knownSheets.has(sn)) return;
+    loadDynamicSheet(wb, sn, 'paye');
+  });
+  setTimeout(updateBadges, 0);
 }
 
 function loadTdbWorkbook(wb){
-  wbTdb=wb;
-  Object.entries(TDB_MAP_BASE).forEach(([key,{sheet,cols}])=>{DB[key]=sheetToRecords(wb.Sheets[sheet], cols, key)});
+  wbTdb = wb;
+  const knownSheets = new Set(Object.values(TDB_MAP_BASE).map(m => m.sheet));
+
+  // 1. Onglets connus
+  Object.entries(TDB_MAP_BASE).forEach(([key, {sheet, cols}]) => {
+    const ws = wb.Sheets[sheet];
+    if(!ws) return;
+    DB[key] = sheetToRecords(ws, cols, key, 1);
+  });
+  // 2. Onglets inconnus — détection et création dynamique
+  (wb.SheetNames||[]).forEach(sn => {
+    if(knownSheets.has(sn)) return;
+    if(/param/i.test(sn)) return;
+    loadDynamicSheet(wb, sn, 'tdb');
+  });
+  // Mettre à jour les badges APRÈS chargement complet (inclus les onglets dynamiques)
+  setTimeout(updateBadges, 0);
 }
+
+// Charger un onglet inconnu et créer tout le nécessaire dynamiquement
+function loadDynamicSheet(wb, sheetName, fileKey){
+  const ignored = ['Parametres','PARAMETRES','Paramètres','PARAMETRAGE','parametrage'];
+  if(ignored.includes(sheetName)) return;
+
+  // ── Vérifier si cet onglet correspond à un onglet connu (doublon de nom) ──
+  function sheetsMatch(a, b) {
+    const na = normalizeHeader(a), nb = normalizeHeader(b);
+    if(na === nb) return true;
+    const wordsOf = s => s.toLowerCase()
+      .replace(/[àáâä]/g,'a').replace(/[éèêë]/g,'e').replace(/[îï]/g,'i')
+      .replace(/[ôö]/g,'o').replace(/[ùûü]/g,'u').replace(/[ç]/g,'c')
+      .split(/[^a-z0-9]+/).filter(w => w.length >= 3);
+    const wa = new Set(wordsOf(a)), wb2 = new Set(wordsOf(b));
+    const common = [...wa].filter(w => wb2.has(w));
+    const minWords = Math.min(wa.size, wb2.size);
+    return common.length >= 2 || (minWords > 0 && common.length / minWords >= 0.8);
+  }
+  for(const [key, {sheet}] of Object.entries(TDB_MAP_BASE)) {
+    if(sheetsMatch(sheet, sheetName)) {
+      const ws = wb.Sheets[sheetName];
+      if(ws) DB[key] = sheetToRecords(ws, TDB_MAP_BASE[key].cols||[], key, 1);
+      return;
+    }
+  }
+  for(const [viewId, vm] of Object.entries(VIEW_MAP)) {
+    if(vm.sheetName && sheetsMatch(vm.sheetName, sheetName)) {
+      const ws = wb.Sheets[sheetName];
+      if(ws) DB[vm.dbKey()] = sheetToRecords(ws, [], vm.dbKey(), 1);
+      return;
+    }
+  }
+
+  // Générer un viewId stable
+  const slug = sheetName.toLowerCase()
+    .replace(/[àáâä]/g,'a').replace(/[éèêë]/g,'e').replace(/[îï]/g,'i')
+    .replace(/[ôö]/g,'o').replace(/[ùûü]/g,'u').replace(/[ç]/g,'c')
+    .replace(/[^a-z0-9]/g,'_').replace(/_+/g,'_').replace(/^_|_$/g,'');
+  const prefix = fileKey==='paye' ? 'paye_dyn_' : 'tdb_dyn_';
+  const viewId  = prefix + slug;
+  const tableKey = viewId;
+
+  // Si déjà présent → rechargement
+  if(VIEW_MAP[viewId]) {
+    const ws = wb.Sheets[sheetName];
+    if(ws) DB[tableKey] = sheetToRecords(ws, [], tableKey, 1);
+    // Mettre à jour le schéma avec les clés réelles des données
+    _rebuildDynSchema(viewId, tableKey, sheetName, wb.Sheets[sheetName]);
+    return;
+  }
+
+  const ws = wb.Sheets[sheetName];
+  if(!ws) return;
+
+  if(!DB[tableKey]) DB[tableKey] = [];
+  if(!ADMIN.customCols[tableKey]) ADMIN.customCols[tableKey] = [];
+
+  // ── ÉTAPE 1 : Vider les customCols stales pour forcer une reconstruction propre ──
+  // Les anciennes entrées peuvent avoir des clés décalées suite aux changements d'algorithme
+  ADMIN.customCols[tableKey] = [];
+
+  // ── ÉTAPE 2 : Charger les données via sheetToRecords ──────
+  // sheetToRecords construit le colMap avec les vraies clés (header-based + positional fallback)
+  // et peuple aussi ADMIN.customCols[tableKey] pour les colonnes inconnues
+  DB[tableKey] = sheetToRecords(ws, [], tableKey, 1);
+
+  // ── ÉTAPE 2 : Construire le schéma depuis les données réelles ──
+  // Source de vérité = les clés présentes dans les enregistrements chargés
+  // + les labels depuis ADMIN.customCols + les labels connus depuis SCHEMAS_BASE
+  _rebuildDynSchema(viewId, tableKey, sheetName, ws);
+
+  VIEW_MAP[viewId] = {
+    dbKey: () => tableKey,
+    schema: viewId,
+    file: fileKey,
+    showMonths: false,
+    isDynamic: true,
+    sheetName
+  };
+  if(fileKey==='tdb') {
+    TDB_MAP_BASE[tableKey] = { sheet: sheetName, cols: SCHEMAS_BASE[viewId].fields.map(f=>f.key) };
+  }
+  addTabToNav(viewId, sheetName, fileKey);
+
+  if(!ADMIN.customTabs) ADMIN.customTabs = [];
+  if(!ADMIN.customTabs.some(t => t.id === viewId)) {
+    ADMIN.customTabs.push({ id:viewId, label:sheetName, file:fileKey, sheetName, isDynamic:true });
+    saveAdminConfig();
+  }
+}
+
+// Reconstruire le schéma d'un onglet dynamique depuis ses données réelles
+function _rebuildDynSchema(viewId, tableKey, sheetName, ws){
+  // Lire les en-têtes réels pour avoir les labels
+  const raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:true, cellDates:false});
+  const headerRow = raw[0] || [];
+
+  // Construire le même colMap que sheetToRecords (reproduire la logique exacte)
+  const colMap = {}; // colIndex → key
+  const keyAssignedAt = {};
+  const colKeys = []; // vide pour onglets dynamiques
+
+  headerRow.forEach((h, idx) => {
+    const hStr = String(h || '').replace(/\n/g,' ').trim();
+    if(!hStr) return;
+    const resolved = resolveHeader(hStr);
+    if(resolved) {
+      if(keyAssignedAt[resolved] !== undefined) {
+        const alreadyUsed = new Set(Object.values(colMap));
+        const alreadyPos = colKeys.indexOf(resolved);
+        let candidate = null;
+        for(let ci = alreadyPos+1; ci < colKeys.length; ci++) {
+          if(!alreadyUsed.has(colKeys[ci])){ candidate=colKeys[ci]; break; }
+        }
+        if(candidate){ colMap[idx]=candidate; keyAssignedAt[candidate]=idx; }
+        else { colMap[idx]=resolved+'_'+idx; }
+      } else {
+        colMap[idx] = resolved;
+        keyAssignedAt[resolved] = idx;
+      }
+    } else {
+      colMap[idx] = '_col_' + normalizeHeader(hStr).slice(0,20) + '_' + idx;
+    }
+  });
+
+  // Construire les fields dans l'ORDRE DES COLONNES EXCEL
+  const fields = [];
+  const existingCols = ADMIN.customCols[tableKey] || [];
+
+  headerRow.forEach((h, idx) => {
+    const hStr = String(h || '').replace(/\n/g,' ').trim();
+    if(!hStr) return;
+    const key = colMap[idx];
+    if(!key) return;
+    const label = hStr;
+    // Déterminer le type : date si la clé est connue comme date OU le label contient "date"
+    const type = isDateCol(key) || /date/i.test(label) ? 'date' : 'text';
+    // Éviter les doublons dans fields
+    if(!fields.some(f => f.key === key)) {
+      fields.push({key, label, type, options:null});
+    }
+  });
+
+  // Ajouter les colonnes de ADMIN.customCols qui ne sont pas encore dans fields
+  // (colonnes détectées lors de sessions précédentes)
+  existingCols.forEach(c => {
+    if(!fields.some(f => f.key === c.key)) {
+      fields.push({key:c.key, label:c.label, type:c.type||'text', options:null});
+    }
+  });
+
+  // defaultCols = toutes les colonnes (max 12 pour l'affichage initial)
+  const defaultCols = fields.map(f => f.key);
+
+  SCHEMAS_BASE[viewId] = {
+    title: sheetName,
+    fields,
+    cols: defaultCols,
+    isDynamic: true
+  };
+}
+
+
 
 // ═══════════════════════════════════════════════════════════
 // MOTEUR EXCEL — ÉCRITURE DIRECTE XML VIA JSZIP
@@ -745,6 +1430,8 @@ async function idbDel(key){try{const db=await openIDB();return new Promise(res=>
 let fileNamePaye=null, fileNameTdb=null;
 let fileHandlePaye=null, fileHandleTdb=null;
 let zipPaye=null, zipTdb=null;  // JSZip instances — conservées entre sauvegardes
+// Handles alternatifs (chemin de sauvegarde personnalisé défini en admin)
+let altHandlePaye=null, altHandleTdb=null;
 
 // ─── XML HELPERS ──────────────────────────────────────────
 function xmlEsc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');}
@@ -789,21 +1476,29 @@ function getOrAdd(val, strings){
   return strings.length-1;
 }
 
-// Extraire les styles par colonne depuis la ligne template (row 2 ou 3)
-function extractColStyles(sheetXml, nCols, templateRowNum){
-  const rn = templateRowNum||2;
-  const rowRe = new RegExp(`<row r="${rn}"([^>]*)>([\\s\\S]*?)<\\/row>`);
-  const row = sheetXml.match(rowRe);
+// Extraire les styles par colonne depuis la ligne template qui précède les données
+// On cherche la dernière ligne vide (template de style) juste avant dataStartRow
+function extractColStyles(sheetXml, nCols, dataStartRow){
+  // La ligne template est la dernière ligne AVANT les données (dataStartRow - 1)
+  // Elle contient les styles mais pas de valeurs <v>
+  const templateRowNum = dataStartRow > 2 ? dataStartRow - 1 : 2;
   const colStyles = {};
-  if(row){
+
+  // Essayer la ligne template, puis remonter si nécessaire
+  for(let rn = templateRowNum; rn >= 2; rn--){
+    const rowRe = new RegExp(`<row r="${rn}"([^>]*)>([\\s\\S]*?)<\\/row>`);
+    const row = sheetXml.match(rowRe);
+    if(!row) continue;
     const cr = new RegExp(`<c r="([A-Z]+)${rn}"([^>]*)(?:\\/>|>[\\s\\S]*?<\\/c>)`, 'g');
-    let m;
+    let m, found=false;
     while((m=cr.exec(row[2]))!==null){
       const sM=m[2].match(/s="(\d+)"/);
-      colStyles[m[1]]={s:sM?sM[1]:'0'};
+      if(sM){ colStyles[m[1]]={s:sM[1]}; found=true; }
     }
+    if(found) break; // on a trouvé des styles
   }
-  // Garantir que toutes les colonnes ont un style
+
+  // Garantir que toutes les colonnes ont un style (fallback s='0')
   for(let i=0;i<nCols;i++){
     const col=idxToCol(i);
     if(!colStyles[col]) colStyles[col]={s:'0'};
@@ -812,15 +1507,16 @@ function extractColStyles(sheetXml, nCols, templateRowNum){
 }
 
 // Réécrire les données d'une feuille sans toucher les styles
-// dataStartRow = première ligne de données (après en-têtes)
+// dataStartRow = première ligne de données Excel (1-based), ex: 4 pour CDD
 // strings = tableau partagé (MÊME référence pour toutes les feuilles d'un workbook)
 function rewriteSheetXml(sheetXml, records, colKeys, dataStartRow, strings){
   const nCols=colKeys.length;
   const colLetters=colKeys.map((_,i)=>idxToCol(i));
   const colStyles=extractColStyles(sheetXml, nCols, dataStartRow);
 
-  // Récupérer les attributs de style de la ligne template (sans r= et spans=)
-  const rowRe=new RegExp(`<row r="${dataStartRow}"([^>]*)>`);
+  // Attributs de style de la ligne (copier depuis ligne template)
+  const templateRowNum = dataStartRow > 2 ? dataStartRow - 1 : 2;
+  const rowRe=new RegExp(`<row r="${templateRowNum}"([^>]*)>`);
   const rowM=sheetXml.match(rowRe);
   const baseRowAttrs=rowM
     ? rowM[1].replace(/\s*r="\d+"/,'').replace(/\s*spans="[^"]*"/,'')
@@ -837,13 +1533,17 @@ function rewriteSheetXml(sheetXml, records, colKeys, dataStartRow, strings){
       if(raw===null||raw===undefined||raw==='')
         return`<c r="${ref}" s="${s}"/>`;
 
-      // Date ISO → numéro de série Excel
+      // Date ISO YYYY-MM-DD → numéro de série Excel correct
       if(typeof raw==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(raw)){
         const d=new Date(raw+'T00:00:00');
-        if(!isNaN(d)){
-          // Numéro de série Excel (date 1900-based, avec bug 1900 intentionnel de Excel)
-          const ms=d.getTime()-new Date(1899,11,31).getTime();
-          const serial=Math.round(ms/86400000)+1;
+        if(!isNaN(d.getTime())){
+          // Calcul correct du numéro de série Excel :
+          // Excel compte à partir du 1900-01-01 = 1, avec bug intentionnel 29/02/1900
+          const y=d.getFullYear(), mo=d.getMonth(), day=d.getDate();
+          const utcMs=Date.UTC(y,mo,day);
+          const epoch=Date.UTC(1900,0,1);
+          let serial=Math.round((utcMs-epoch)/86400000)+1;
+          if(serial>=60) serial++; // compenser le bug Excel du 29/02/1900
           return`<c r="${ref}" s="${s}" t="n"><v>${serial}</v></c>`;
         }
       }
@@ -897,7 +1597,11 @@ function getEffectiveColsForSave(tableKey){
   const base=tableKey==='paye_'?[...PAYE_COLS_BASE]:tableKey==='paye_N1'?[...N1_COLS]:TDB_MAP_BASE[tableKey]?[...TDB_MAP_BASE[tableKey].cols]:[];
   const custom=(ADMIN.customCols[tableKey]||[]).map(c=>c.key);
   if(ADMIN.importanceEnabled[tableKey]) base.push('_importance');
-  return [...base,...custom];
+  // Inclure aussi toutes les clés présentes dans les données chargées (colonnes dynamiques)
+  const all = [...base, ...custom];
+  const dataKeys = getDataKeys(tableKey);
+  dataKeys.forEach(k => { if(!all.includes(k) && k !== '_importance') all.push(k); });
+  return all;
 }
 
 // ─── SAUVEGARDE PRINCIPALE ────────────────────────────────
@@ -926,7 +1630,7 @@ async function saveAllFiles(){
         const n1path=nameToPath['N+1'];
         if(n1path&&zipPaye.files[n1path]){
           const xml=await zipPaye.files[n1path].async('text');
-          zipPaye.file(n1path, rewriteSheetXml(xml, DB['paye_N1'], getEffectiveColsForSave('paye_N1'), 3, strings));
+          zipPaye.file(n1path, rewriteSheetXml(xml, DB['paye_N1'], getEffectiveColsForSave('paye_N1'), 4, strings));
         }
         // Réécrire sharedStrings avec l'ensemble complet
         zipPaye.file('xl/sharedStrings.xml', buildSSXml(strings));
@@ -950,7 +1654,8 @@ async function saveAllFiles(){
           const path=nameToPath[sheet];
           if(!path||!zipTdb.files[path]) continue;
           const xml=await zipTdb.files[path].async('text');
-          zipTdb.file(path, rewriteSheetXml(xml, DB[key], getEffectiveColsForSave(key), 2, strings));
+          // Structure confirmée par les fichiers modèles : en-tête ligne 1, données ligne 2
+          zipTdb.file(path, rewriteSheetXml(xml, DB[key]||[], getEffectiveColsForSave(key), 2, strings));
         }
         zipTdb.file('xl/sharedStrings.xml', buildSSXml(strings));
 
@@ -962,42 +1667,60 @@ async function saveAllFiles(){
   }
 
   btn.disabled=false; btn.textContent='💾 Enregistrer';
+  if(ok) hideFirstSaveBanner();
   notify(ok?'✓ Fichiers sauvegardés (styles préservés)':'⚠ Sauvegarde partielle');
 }
 
-// Écrire un ArrayBuffer dans le fichier original ou le télécharger
+// Écrire un ArrayBuffer dans le fichier source (ou chemin alternatif admin)
+// Logique :
+//  1. Handle valide en session  → écriture directe, pas de dialogue
+//  2. Handle alternatif admin   → écriture sur le chemin choisi dans les paramètres
+//  3. Handle expiré             → showOpenFilePicker ("Ouvrir" sur le fichier source)
+//                                 retourne un handle r/w sans "Enregistrer sous"
+//  4. Pas de File System API    → téléchargement
 async function writeFile(buf, handle, defaultName, which){
   const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 
-  // 1. File System Access — écriture directe dans le fichier source
-  if(handle&&handle.createWritable){
+  // Vérifier s'il y a un chemin alternatif configuré en admin
+  const altHandle = which==='paye' ? altHandlePaye : altHandleTdb;
+  const activeHandle = altHandle || handle;
+
+  // 1. Handle valide → écriture directe sans aucun dialogue
+  if(activeHandle && activeHandle.createWritable){
     try{
-      const w=await handle.createWritable();
+      const w=await activeHandle.createWritable();
       await w.write(blob); await w.close();
       return true;
     }catch(e){
-      // Handle expiré (page rechargée) → demander de pointer vers le fichier
-      console.warn('Handle expired:', e.message);
+      // Permission expirée après rechargement de page → continuer vers 3.
+      console.warn('Handle write failed (likely expired after page reload):', e.message);
     }
   }
 
-  // 2. showSaveFilePicker avec nom pré-rempli (Chrome/Edge sans handle valide)
-  if(window.showSaveFilePicker){
+  // 3. Demander à l'utilisateur d'ouvrir le fichier source (pas "Enregistrer sous")
+  //    showOpenFilePicker retourne un handle en lecture+écriture sur le fichier existant
+  if(window.showOpenFilePicker){
     try{
-      const h=await window.showSaveFilePicker({
-        suggestedName: defaultName,
-        types:[{description:'Excel (.xlsx)',accept:{'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['.xlsx']}}]
+      notify('📂 Sélectionnez le fichier "'+defaultName+'" pour y enregistrer…');
+      const[h]=await window.showOpenFilePicker({
+        types:[{description:'Fichier Excel (.xlsx)',accept:{'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['.xlsx']}}],
+        multiple:false
       });
-      const w=await h.createWritable(); await w.write(blob); await w.close();
-      // Conserver le nouveau handle
-      if(which==='paye') fileHandlePaye=h; else fileHandleTdb=h;
-      return true;
+      // Vérifier les permissions d'écriture
+      const perm = await h.requestPermission({mode:'readwrite'});
+      if(perm==='granted'){
+        const w=await h.createWritable(); await w.write(blob); await w.close();
+        // Stocker le handle pour toute la session → plus de dialogue pour ce fichier
+        if(which==='paye') fileHandlePaye=h; else fileHandleTdb=h;
+        return true;
+      }
     }catch(e){
-      if(e.name==='AbortError') return false; // Annulé par l'utilisateur
+      if(e.name==='AbortError') return false;
+      console.warn('showOpenFilePicker failed:', e.message);
     }
   }
 
-  // 3. Dernier recours : téléchargement
+  // 4. Dernier recours : téléchargement avec le nom exact du fichier source
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob); a.download=defaultName; a.click();
   URL.revokeObjectURL(a.href);
@@ -1041,6 +1764,11 @@ async function tryAutoReload(){
       const n=document.getElementById('reload-names');
       if(n) n.textContent=[payeMeta?.name,tdbMeta?.name].filter(Boolean).join(' + ');
     }
+    // Si les handles ne sont pas disponibles (rechargement IDB),
+    // afficher un bandeau indiquant qu'il faudra confirmer le fichier au 1er save
+    if(!fileHandlePaye&&payeMeta || !fileHandleTdb&&tdbMeta){
+      showFirstSaveBanner();
+    }
   } else { renderView(); }
 }
 
@@ -1059,6 +1787,7 @@ async function pickFile(which){
     localStorage.setItem('grh_file_'+which,JSON.stringify({name,savedAt:Date.now()}));
     markLoaded(which,name); enableSaveBtn(); updateBadges(); renderView();
     const b=document.getElementById('reload-banner'); if(b) b.style.display='none';
+    hideFirstSaveBanner();
     notify('✓ '+name+' chargé et mémorisé');
   };
 
@@ -1108,6 +1837,60 @@ async function forgetOneFile(which){
   const sb=document.getElementById('save-all-btn'); if(sb&&!wbPaye&&!wbTdb) sb.disabled=true;
   notify('✓ Fichier '+which+' effacé');
   if(adminTab==='settings') setAdminTab('settings');
+}
+
+// ─── CHEMIN DE SAUVEGARDE ALTERNATIF ─────────────────────
+// Les handles File System ne sont pas sérialisables → on les redemande
+// à la première sauvegarde de la session si un alt path est configuré
+async function setAltSavePath(which){
+  if(!window.showSaveFilePicker){
+    notify('⚠ Votre navigateur ne supporte pas la sélection de fichier (utilisez Chrome/Edge)');
+    return;
+  }
+  const defaultName = which==='paye'
+    ? (fileNamePaye||'Modèle_cahier_de_paye_.xlsx')
+    : (fileNameTdb||'Tableau_de_bord_.xlsx');
+  try{
+    const h=await window.showSaveFilePicker({
+      suggestedName: defaultName,
+      types:[{description:'Excel (.xlsx)',accept:{'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['.xlsx']}}]
+    });
+    // Stocker handle en session
+    if(which==='paye') altHandlePaye=h; else altHandleTdb=h;
+    // Stocker le nom en localStorage pour affichage
+    localStorage.setItem('grh_alt_'+which, JSON.stringify({name:h.name||defaultName, savedAt:Date.now()}));
+    notify('✓ Chemin alternatif défini : '+h.name);
+    setAdminTab('settings');
+  }catch(e){
+    if(e.name!=='AbortError') notify('⚠ '+e.message);
+  }
+}
+
+async function clearAltSavePath(which){
+  if(which==='paye') altHandlePaye=null; else altHandleTdb=null;
+  localStorage.removeItem('grh_alt_'+which);
+  notify('✓ Chemin alternatif supprimé — sauvegarde sur le fichier source');
+  setAdminTab('settings');
+}
+
+function showFirstSaveBanner(){
+  // N'afficher que si File System Access API est disponible
+  if(!window.showOpenFilePicker) return;
+  const existing=document.getElementById('first-save-banner');
+  if(existing) return; // déjà affiché
+  const banner=document.createElement('div');
+  banner.id='first-save-banner';
+  banner.style.cssText='padding:7px 18px;background:var(--accent-soft);border-bottom:1px solid rgba(79,142,247,.2);font-size:11.5px;color:var(--accent);display:flex;align-items:center;gap:10px;flex-shrink:0';
+  banner.innerHTML=`<span>ℹ</span>
+    <span style="flex:1">Première sauvegarde de la session : il vous sera demandé d'ouvrir le fichier source une seule fois pour autoriser l'écriture.</span>
+    <button onclick="this.parentElement.remove()" style="background:transparent;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;line-height:1">✕</button>`;
+  const main=document.getElementById('main');
+  const topbar=document.getElementById('topbar');
+  if(main&&topbar) main.insertBefore(banner, topbar.nextSibling);
+}
+
+function hideFirstSaveBanner(){
+  const b=document.getElementById('first-save-banner'); if(b) b.remove();
 }
 
 function markDirty(which){
@@ -1304,7 +2087,7 @@ function renderAlertsList(allAlerts,srcTags){
   filtered.forEach(a=>{
     if(a.urgency!==lastU){const u=uc[a.urgency];html+=`<div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${u.c};padding:7px 0 3px;${lastU?'border-top:1px solid var(--border);margin-top:3px':''}">${u.l}</div>`;lastU=a.urgency;}
     const u=uc[a.urgency];const dl=a.diff<0?`Dépassée ${-a.diff}j`:a.diff===0?"Auj.":`${a.diff}j`;
-    const dt=a.date?new Date(a.date).toLocaleDateString('fr-FR'):'—';
+    const dt=a.date?isoToDisplay(a.date):'—';
     const impEnabled=ADMIN.importanceEnabled[viewToTableKey(a.view)];
     html+=`<div class="alert-item" onclick="goToRecord('${a.view}',${a.id})">
       <div class="alert-dot ${u.dot}"></div>
@@ -1368,11 +2151,20 @@ function renderTable(vm,schema){
   </div></div>`;
 }
 
-function renderRows(vm,schema){
-  const data=getFilteredData(vm);updateCount(vm);
-  return data.map(row=>`<tr data-id="${row.id}" onclick="selectRow(${row.id})">
+function renderRows(vm, schema){
+  const data = getFilteredData(vm);
+  updateCount(vm);
+  // Build a map key→label for renderCell
+  const fieldLabels = {};
+  schema.fields.forEach(f => { fieldLabels[f.key] = f.label; });
+
+  return data.map(row => `<tr data-id="${row.id}" onclick="selectRow(${row.id})">
   <td style="width:28px"><input type="checkbox" onclick="event.stopPropagation()"></td>
-  ${schema.cols.map(c=>`<td title="${row[c]||''}">${c==='_importance'?renderImpChip(row[c]):renderCell(c,row[c])}</td>`).join('')}
+  ${schema.cols.map(c => {
+    const v = row[c];
+    const cell = c==='_importance' ? renderImpChip(v) : renderCell(c, v, fieldLabels[c]);
+    return `<td title="${String(v||'').replace(/"/g,'&quot;')}">${cell}</td>`;
+  }).join('')}
   <td onclick="event.stopPropagation()" style="display:flex;gap:3px;padding:5px 7px">
     <button class="btn btn-ghost" style="padding:2px 7px;font-size:11px" onclick="openEditModal(${row.id})">✏</button>
     <button class="btn btn-danger" style="padding:2px 7px;font-size:11px" onclick="deleteRow(${row.id})">🗑</button>
@@ -1380,20 +2172,60 @@ function renderRows(vm,schema){
 </tr>`).join('');
 }
 
-function renderCell(col,val){
-  if(val===''||val===null||val===undefined)return'<span style="color:var(--text-dim)">—</span>';
-  const statusCols=['saisie','acte','gecco','paye','pref','bulletinElectro','impactPaye','arreteFait','saisieAstre','acteNaissance','couchesPatho','arreteModif','arretTravail','soins','imputabilite','transmissionFinal','cnracl','formation','maNbi'];
-  if(statusCols.includes(col)){const cls=val==='OK'||val==='OUI'?'chip-green':val==='A FAIRE'?'chip-orange':val==='NON'||val==='SO'?'chip-gray':'chip-blue';return`<span class="chip ${cls}">${val}</span>`;}
-  if(col==='type'||col==='typeContrat'||col==='typeAT')return`<span class="chip chip-blue">${val}</span>`;
-  if(col==='newFlag')return val==='OUI'?'<span class="chip chip-green">NEW</span>':'';
-  if(col==='categorie')return`<span class="chip chip-purple">${val}</span>`;
-  if(col==='codeDispo'||col==='codeTpt')return`<span class="chip chip-orange">${val}</span>`;
-  if(col==='_importance')return renderImpChip(val);
-  if(col.toLowerCase().includes('date')||col.startsWith('fin')||col==='debutStage'||col==='titularisation'){
-    if(!val)return'<span style="color:var(--text-dim)">—</span>';
-    try{const d=new Date(val+'T00:00:00');if(!isNaN(d)){const today=new Date();const diff=Math.round((d-today)/86400000);const cls=diff<0?'color:var(--red)':diff<60?'color:var(--orange)':'';return`<span style="font-family:var(--mono);font-size:10.5px;${cls}">${d.toLocaleDateString('fr-FR')}</span>`;}}catch(e){}
+function renderCell(col, val, headerLabel){
+  if(val===''||val===null||val===undefined) return '<span style="color:var(--text-dim)">—</span>';
+  const s = String(val);
+
+  // Colonnes de statut binaire
+  const statusCols=['saisie','acte','gecco','paye','pref','bulletinElectro','impactPaye',
+    'arreteFait','saisieAstre','acteNaissance','couchesPatho','arreteModif','arretTravail',
+    'soins','imputabilite','transmissionFinal','cnracl','formation','maNbi',
+    'grossessePatho','signalIJSS','envoiFormulaire','suppressionTransport'];
+  if(statusCols.includes(col)){
+    const cls=s==='OK'||s==='OUI'?'chip-green':s==='A FAIRE'?'chip-orange':s==='NON'||s==='SO'?'chip-gray':'chip-blue';
+    return `<span class="chip ${cls}">${s}</span>`;
   }
-  return`<span>${String(val).slice(0,40)}</span>`;
+  if(col==='type'||col==='typeContrat'||col==='typeAT') return `<span class="chip chip-blue">${s}</span>`;
+  if(col==='newFlag') return s==='OUI'?'<span class="chip chip-green">NEW</span>':'';
+  if(col==='categorie') return `<span class="chip chip-purple">${s}</span>`;
+  if(col==='codeDispo'||col==='codeTpt') return `<span class="chip chip-orange">${s}</span>`;
+  if(col==='_importance') return renderImpChip(s);
+
+  // Colonnes date (connues ou inférées depuis le nom de la colonne/en-tête)
+  const isDt = isDateCol(col) || (headerLabel && /date/i.test(String(headerLabel)));
+  if(isDt){
+    const iso = /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0,10) : excelDateToISO(val);
+    if(!iso) return `<span style="color:var(--text-dim)">—</span>`;
+    try{
+      const d = new Date(iso+'T00:00:00');
+      if(!isNaN(d.getTime())){
+        const today = new Date(); today.setHours(0,0,0,0);
+        const diff = Math.round((d.getTime()-today.getTime())/86400000);
+        const cls = diff<0?'color:var(--red)':diff<60?'color:var(--orange)':'';
+        return `<span style="font-family:var(--mono);font-size:10.5px;${cls}">${isoToDisplay(iso)}</span>`;
+      }
+    }catch(e){}
+    return `<span style="font-family:var(--mono);font-size:10.5px">${isoToDisplay(iso)||s}</span>`;
+  }
+
+  // Emails (afficher en lien, plusieurs séparés par ;)
+  if(s.includes('@') && !s.includes(' ')){
+    const emails = s.split(/[;,]/).map(e=>e.trim()).filter(Boolean);
+    return emails.map(e=>`<a href="mailto:${e}" style="color:var(--accent);font-size:10.5px" title="${e}">${e.split('@')[0]}@…</a>`).join('<br>');
+  }
+  if(s.includes(';') && s.includes('@')){
+    // Plusieurs emails séparés par ;
+    const parts = s.split(';').map(e=>e.trim()).filter(Boolean);
+    return parts.map(p=>p.includes('@')?`<a href="mailto:${p}" style="color:var(--accent);font-size:10.5px" title="${p}">${p.split('@')[0]}@…</a>`:`<span>${p.slice(0,25)}</span>`).join('<br>');
+  }
+
+  // Texte long : tronquer avec tooltip
+  if(s.length > 45){
+    const safe = s.replace(/"/g,'&quot;').replace(/</g,'&lt;');
+    return `<span title="${safe}" style="cursor:help">${s.slice(0,43)}…</span>`;
+  }
+
+  return `<span>${s}</span>`;
 }
 
 function updateCount(vm){const el=document.getElementById('rec-count');if(el){const n=getFilteredData(vm).length;el.textContent=`${n} enreg.`;}}
@@ -1711,26 +2543,105 @@ function addColToAll(){
 
 // ── TAB: ONGLETS ─────────────────────────────────────────
 function renderAdminTabs(){
-  const custom=ADMIN.customTabs||[];
+  const allTabs = ADMIN.customTabs||[];
+  const dynTabs = allTabs.filter(t => t.isDynamic);
+  const manualTabs = allTabs.filter(t => !t.isDynamic);
+  const promotedIds = new Set((ADMIN.promotedTabs||[]).map(t=>t.id));
+
   return`<div>
+
+  <!-- ══ ONGLETS DÉCOUVERTS AUTOMATIQUEMENT ══ -->
   <div class="admin-section">
-    <div class="admin-section-title">Onglets personnalisés</div>
-    <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">Ajoutez de nouveaux onglets au Cahier de Paye ou au Tableau de Bord. Les données sont indépendantes et exportables en CSV.</p>
-    ${custom.length===0?`<div style="color:var(--text-muted);font-size:12px;padding:12px 0;text-align:center">Aucun onglet personnalisé</div>`:''}
-    ${custom.map(tab=>`<div class="admin-row">
-      <div style="flex:1">
-        <div class="admin-row-label">${tab.label}</div>
-        <div class="admin-row-sub">Fichier : ${tab.file==='paye'?'Cahier de Paye':'Tableau de Bord'} — ID: ${tab.id}</div>
-      </div>
-      <span class="chip chip-purple">Custom</span>
-      <button class="btn btn-danger" style="font-size:11px;padding:3px 8px" onclick="delCustomTab('${tab.id}')">Supprimer</button>
-    </div>`).join('')}
+    <div class="admin-section-title">🔍 Onglets découverts automatiquement</div>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+      Ces onglets ont été détectés lors du chargement de vos fichiers sources.
+      Vous pouvez les <strong>promouvoir</strong> vers le groupe "Tableau de Bord RH" 
+      pour qu'ils y apparaissent automatiquement à chaque chargement futur.
+    </p>
+    ${dynTabs.length===0
+      ? `<div style="color:var(--text-muted);font-size:12px;padding:14px;text-align:center;background:var(--surface2);border-radius:var(--r)">
+          Aucun onglet découvert — chargez un fichier Excel pour en détecter automatiquement.
+        </div>`
+      : dynTabs.map(tab => {
+          const rows = (DB[tab.id]||[]).length;
+          const isPromoted = promotedIds.has(tab.id);
+          const vm = VIEW_MAP[tab.id];
+          const fields = SCHEMAS_BASE[tab.id]?.fields||[];
+          return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px">
+            <div style="display:flex;align-items:flex-start;gap:12px">
+              <div style="flex:1">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                  <strong style="font-size:13px">${tab.label}</strong>
+                  <span class="chip ${tab.file==='paye'?'chip-blue':'chip-orange'}">${tab.file==='paye'?'Cahier de Paye':'Tableau de Bord'}</span>
+                  ${isPromoted?'<span class="chip chip-green">✓ Dans TDB RH</span>':'<span class="chip chip-gray">Autres</span>'}
+                </div>
+                <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:8px">
+                  Onglet source : <code style="font-family:var(--mono)">${tab.sheetName||tab.label}</code>
+                  &nbsp;·&nbsp; <strong style="color:var(--accent)">${rows}</strong> enregistrement${rows>1?'s':''}
+                  &nbsp;·&nbsp; ${fields.length} colonne${fields.length>1?'s':''}
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:4px">
+                  ${fields.slice(0,8).map(f=>`<span style="font-size:10px;padding:1px 6px;background:var(--surface3);border-radius:3px;color:var(--text-muted)">${f.label}</span>`).join('')}
+                  ${fields.length>8?`<span style="font-size:10px;color:var(--text-dim)">+${fields.length-8} autres</span>`:''}
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+                ${isPromoted
+                  ? `<button class="btn btn-warning" style="font-size:11px;padding:4px 10px;white-space:nowrap" onclick="demoteTab('${tab.id}')">↩ Retirer du TDB RH</button>`
+                  : `<button class="btn btn-primary" style="font-size:11px;padding:4px 10px;white-space:nowrap" onclick="promoteTab('${tab.id}')">⬆ Promouvoir vers TDB RH</button>`
+                }
+                <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="renameTab('${tab.id}')">✏ Renommer</button>
+                <button class="btn btn-danger" style="font-size:11px;padding:4px 10px" onclick="delDynTab('${tab.id}')">🗑 Supprimer</button>
+              </div>
+            </div>
+          </div>`;
+        }).join('')
+    }
   </div>
+
+  <!-- ══ ONGLETS PROMUS (dans TDB RH) ══ -->
+  ${(ADMIN.promotedTabs||[]).length>0 ? `
   <div class="admin-section">
-    <div class="admin-section-title">Créer un nouvel onglet</div>
+    <div class="admin-section-title">📌 Onglets intégrés au Tableau de Bord RH</div>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+      Ces onglets apparaissent dans le groupe "Tableau de Bord RH" comme les onglets officiels.
+      Ils sont rechargés automatiquement à chaque chargement du fichier source correspondant.
+    </p>
+    ${(ADMIN.promotedTabs||[]).map(pt => {
+      const rows = (DB[pt.id]||[]).length;
+      return `<div class="admin-row">
+        <div style="flex:1">
+          <div class="admin-row-label">${pt.label}</div>
+          <div class="admin-row-sub">Source : "${pt.sheetName}" dans ${pt.file==='paye'?'Cahier de Paye':'Tableau de Bord'} — ${rows} enreg.</div>
+        </div>
+        <span class="chip chip-green">TDB RH</span>
+        <button class="btn btn-warning" style="font-size:11px;padding:3px 8px" onclick="demoteTab('${pt.id}')">↩ Retirer</button>
+      </div>`;
+    }).join('')}
+  </div>` : ''}
+
+  <!-- ══ ONGLETS MANUELS ══ -->
+  <div class="admin-section">
+    <div class="admin-section-title">🛠 Onglets créés manuellement</div>
+    ${manualTabs.length===0
+      ? `<p style="font-size:12px;color:var(--text-muted)">Aucun onglet créé manuellement.</p>`
+      : manualTabs.map(tab=>`<div class="admin-row">
+          <div style="flex:1">
+            <div class="admin-row-label">${tab.label}</div>
+            <div class="admin-row-sub">Fichier : ${tab.file==='paye'?'Cahier de Paye':'Tableau de Bord'} — ID: ${tab.id}</div>
+          </div>
+          <span class="chip chip-purple">Manuel</span>
+          <button class="btn btn-danger" style="font-size:11px;padding:3px 8px" onclick="delCustomTab('${tab.id}')">Supprimer</button>
+        </div>`).join('')
+    }
+  </div>
+
+  <!-- ══ CRÉER UN ONGLET ══ -->
+  <div class="admin-section">
+    <div class="admin-section-title">➕ Créer un nouvel onglet</div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">
       <div class="form-group"><label>Nom de l'onglet</label><input type="text" id="new-tab-label" placeholder="ex: Mutations, Formations…"></div>
-      <div class="form-group"><label>Fichier cible</label><select id="new-tab-file"><option value="paye">Cahier de Paye</option><option value="tdb">Tableau de Bord</option></select></div>
+      <div class="form-group"><label>Fichier cible</label><select id="new-tab-file"><option value="tdb">Tableau de Bord</option><option value="paye">Cahier de Paye</option></select></div>
       <div class="form-group"><label>Colonnes initiales (séparées par ;)</label><input type="text" id="new-tab-cols" placeholder="Nom;Prénom;Pôle;Date…"></div>
     </div>
     <button class="btn btn-purple" onclick="createCustomTab()">+ Créer l'onglet</button>
@@ -1738,33 +2649,140 @@ function renderAdminTabs(){
 </div>`;
 }
 
+// Promouvoir un onglet dynamique vers le groupe "Tableau de Bord RH"
+function promoteTab(id){
+  const tab = (ADMIN.customTabs||[]).find(t=>t.id===id);
+  if(!tab){notify('⚠ Onglet introuvable');return;}
+
+  // Enregistrer dans promotedTabs
+  if(!ADMIN.promotedTabs) ADMIN.promotedTabs=[];
+  if(!ADMIN.promotedTabs.some(t=>t.id===id)){
+    ADMIN.promotedTabs.push({
+      id, label:tab.label, sheetName:tab.sheetName, file:tab.file
+    });
+  }
+
+  // Déplacer dans la nav : retirer du groupe "Autres" et insérer dans "Tableau de Bord RH"
+  const existing = document.querySelector(`[data-view="${id}"]`);
+  if(existing) existing.remove();
+
+  const tdbContainer = document.getElementById('nav-tdb-rh-items');
+  if(tdbContainer){
+    const item = document.createElement('div');
+    item.className = 'nav-item';
+    item.dataset.view = id;
+    item.innerHTML = `<div class="nav-dot"></div>${tab.label}<span class="badge" id="badge-${id}">${(DB[id]||[]).length}</span>`;
+    item.onclick = () => setView(id, item);
+    tdbContainer.appendChild(item);
+  }
+
+  // Nettoyer le groupe "Autres" vide
+  cleanEmptyNavGroups();
+  saveAdminConfig();
+  notify(`✓ "${tab.label}" ajouté au Tableau de Bord RH`);
+  setAdminTab('tabs');
+}
+
+// Rétrograder un onglet promu — le retourner dans "Autres"
+function demoteTab(id){
+  const tab = (ADMIN.customTabs||[]).find(t=>t.id===id)
+           || (ADMIN.promotedTabs||[]).find(t=>t.id===id);
+  if(!tab) return;
+
+  // Retirer de promotedTabs
+  ADMIN.promotedTabs = (ADMIN.promotedTabs||[]).filter(t=>t.id!==id);
+
+  // Déplacer dans la nav
+  const existing = document.querySelector(`[data-view="${id}"]`);
+  if(existing) existing.remove();
+  addTabToNav(id, tab.label, tab.file||'tdb');
+
+  saveAdminConfig();
+  notify(`↩ "${tab.label}" retiré du Tableau de Bord RH`);
+  setAdminTab('tabs');
+}
+
+// Renommer un onglet dynamique
+function renameTab(id){
+  const tab = (ADMIN.customTabs||[]).find(t=>t.id===id);
+  if(!tab) return;
+  const newLabel = prompt(`Nouveau nom pour "${tab.label}" :`, tab.label);
+  if(!newLabel || newLabel.trim()===tab.label) return;
+  tab.label = newLabel.trim();
+
+  // Mettre à jour dans promotedTabs aussi
+  const promoted = (ADMIN.promotedTabs||[]).find(t=>t.id===id);
+  if(promoted) promoted.label = tab.label;
+
+  // Mettre à jour dans SCHEMAS_BASE
+  if(SCHEMAS_BASE[id]) SCHEMAS_BASE[id].title = tab.label;
+
+  // Mettre à jour dans la nav
+  const navEl = document.querySelector(`[data-view="${id}"]`);
+  if(navEl){
+    const badge = navEl.querySelector('.badge');
+    navEl.innerHTML = `<div class="nav-dot"></div>${tab.label}`;
+    if(badge) navEl.appendChild(badge);
+    else navEl.innerHTML += `<span class="badge" id="badge-${id}">${(DB[id]||[]).length}</span>`;
+    navEl.onclick = () => setView(id, navEl);
+  }
+
+  saveAdminConfig();
+  notify(`✓ Onglet renommé en "${tab.label}"`);
+  setAdminTab('tabs');
+}
+
+// Supprimer un onglet dynamique découvert automatiquement
+function delDynTab(id){
+  if(!confirm(`Supprimer cet onglet de GRH Manager ?\n(Le fichier Excel source n'est pas modifié)`)) return;
+  ADMIN.customTabs = (ADMIN.customTabs||[]).filter(t=>t.id!==id);
+  ADMIN.promotedTabs = (ADMIN.promotedTabs||[]).filter(t=>t.id!==id);
+  delete DB[id];
+  delete VIEW_MAP[id];
+  delete SCHEMAS_BASE[id];
+  const navEl = document.querySelector(`[data-view="${id}"]`);
+  if(navEl) navEl.remove();
+  cleanEmptyNavGroups();
+  saveAdminConfig();
+  notify('✓ Onglet supprimé de GRH Manager');
+  setAdminTab('tabs');
+}
+
+// Nettoyer les groupes de nav vides
+function cleanEmptyNavGroups(){
+  ['nav-tdb-extra','nav-paye-extra'].forEach(groupId => {
+    const g = document.getElementById(groupId);
+    if(!g || typeof g.remove !== 'function') return;
+    const items = g.querySelectorAll ? g.querySelectorAll('.nav-item') : [];
+    if(!items || items.length === 0) g.remove();
+  });
+}
+
 function createCustomTab(){
   const label=(document.getElementById('new-tab-label').value||'').trim();
   const file=document.getElementById('new-tab-file').value;
-  const colsStr=document.getElementById('new-tab-cols').value;
+  const colsStr=(document.getElementById('new-tab-cols').value||'');
   if(!label){notify('⚠ Saisissez un nom');return;}
   const id='custom_'+sanitizeKey(label)+'_'+Date.now();
   const extraCols=colsStr.split(';').map(s=>s.trim()).filter(Boolean);
   if(!ADMIN.customTabs)ADMIN.customTabs=[];
   ADMIN.customTabs.push({id,label,file,cols:extraCols});
   DB[id]=[];
-  // Créer les colonnes custom
   if(!ADMIN.customCols[id])ADMIN.customCols[id]=[];
   extraCols.forEach(colLabel=>{
     const key=sanitizeKey(colLabel);
     if(!ADMIN.customCols[id].some(c=>c.key===key))
       ADMIN.customCols[id].push({key,label:colLabel,type:'text',options:null});
   });
-  // Construire un schéma pour cet onglet
   const customFields=[
     {key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
     {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'matricule',label:'Matricule',type:'text'},
     ...(ADMIN.customCols[id]||[]).map(c=>({key:c.key,label:c.label,type:c.type||'text',options:c.options||null})),
     {key:'remarques',label:'Remarques',type:'textarea',full:true}
   ];
-  SCHEMAS_BASE[id]={title:label, fields:customFields, cols:customFields.filter(f=>!f.full).map(f=>f.key)};
-  VIEW_MAP[id]={dbKey:()=>id, schema:id, file, showMonths:false};
-  addTabToNav(id,label);
+  SCHEMAS_BASE[id]={title:label,fields:customFields,cols:customFields.filter(f=>!f.full).map(f=>f.key)};
+  VIEW_MAP[id]={dbKey:()=>id,schema:id,file,showMonths:false};
+  addTabToNav(id,label,file);
   saveAdminConfig();notify(`✓ Onglet "${label}" créé`);setAdminTab('tabs');
 }
 
@@ -1777,18 +2795,51 @@ function delCustomTab(id){
   saveAdminConfig();notify('✓ Onglet supprimé');setAdminTab('tabs');
 }
 
-function addTabToNav(id,label){
-  const nav=document.getElementById('sb-nav');
-  let customGroup=document.getElementById('nav-custom-group');
-  if(!customGroup){
-    customGroup=document.createElement('div');customGroup.id='nav-custom-group';customGroup.className='nav-group';
-    customGroup.innerHTML='<div class="nav-group-label">Onglets personnalisés</div>';
-    nav.appendChild(customGroup);
+function addTabToNav(id, label, fileKey){
+  const nav = document.getElementById('sb-nav');
+  if(!nav) return;
+
+  // Ne pas dupliquer
+  if(document.querySelector(`[data-view="${id}"]`)) return;
+
+  // Vérifier si cet onglet est promu → le mettre dans le groupe TDB RH
+  const isPromoted = (ADMIN.promotedTabs||[]).some(t => t.id === id);
+  if(isPromoted && fileKey !== 'paye'){
+    const tdbContainer = document.getElementById('nav-tdb-rh-items');
+    if(tdbContainer){
+      const item = document.createElement('div');
+      item.className = 'nav-item';
+      item.dataset.view = id;
+      item.innerHTML = `<div class="nav-dot"></div>${label}<span class="badge" id="badge-${id}">0</span>`;
+      item.onclick = () => setView(id, item);
+      tdbContainer.appendChild(item);
+      return;
+    }
   }
-  const item=document.createElement('div');item.className='nav-item';item.dataset.view=id;
-  item.innerHTML=`<div class="nav-dot"></div>${label}<span class="badge" id="badge-${id}">0</span>`;
-  item.onclick=()=>setView(id,item);
-  customGroup.appendChild(item);
+
+  // Groupe selon la source
+  const groupId = fileKey==='paye' ? 'nav-paye-extra' : 'nav-tdb-extra';
+  const groupLabel = fileKey==='paye' ? 'Autres (Paye)' : 'Autres (Tableau de bord)';
+
+  let group = document.getElementById(groupId);
+  if(!group){
+    group = document.createElement('div');
+    group.id = groupId;
+    group.className = 'nav-group';
+    group.innerHTML = `<div class="nav-group-label">${groupLabel}</div>`;
+    // Insérer avant le groupe Système
+    const sys = Array.from(nav.querySelectorAll('.nav-group'))
+      .find(g => g.querySelector('.admin-item'));
+    if(sys) nav.insertBefore(group, sys);
+    else nav.appendChild(group);
+  }
+
+  const item = document.createElement('div');
+  item.className = 'nav-item';
+  item.dataset.view = id;
+  item.innerHTML = `<div class="nav-dot"></div>${label}<span class="badge" id="badge-${id}">0</span>`;
+  item.onclick = () => setView(id, item);
+  group.appendChild(item);
 }
 
 // ── TAB: DASHBOARD ────────────────────────────────────────
@@ -2082,7 +3133,40 @@ function renderAdminSettings(){
     </div>
   </div>
   <div class="admin-section">
-    <div class="admin-section-title">Fichiers sources mémorisés</div>
+    <div class="admin-section-title">📁 Chemin de sauvegarde</div>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+      Par défaut, les modifications sont enregistrées dans les fichiers sources chargés au départ.
+      Vous pouvez choisir un emplacement alternatif (ex: copie de sauvegarde, dossier réseau).
+    </p>
+    ${['paye','tdb'].map(w=>{
+      const meta=JSON.parse(localStorage.getItem('grh_file_'+w)||'null');
+      const altMeta=JSON.parse(localStorage.getItem('grh_alt_'+w)||'null');
+      const label=w==='paye'?'Cahier de Paye':'Tableau de Bord';
+      return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px">
+        <div style="font-size:12.5px;font-weight:600;margin-bottom:10px">${label}</div>
+        <div class="admin-row" style="padding:0 0 10px;margin:0;border-bottom:1px solid var(--border)">
+          <div style="flex:1">
+            <div style="font-size:11.5px;color:var(--text-muted)">Fichier source (par défaut)</div>
+            <div style="font-size:12px;color:var(--text);margin-top:2px;font-family:var(--mono)">${meta?meta.name:'Non chargé'}</div>
+          </div>
+          <span class="chip ${meta?'chip-green':'chip-gray'}">${meta?'Actif':'—'}</span>
+        </div>
+        <div class="admin-row" style="padding:10px 0 0;margin:0;border:none">
+          <div style="flex:1">
+            <div style="font-size:11.5px;color:var(--text-muted)">Chemin alternatif (optionnel)</div>
+            <div style="font-size:12px;margin-top:3px;font-family:var(--mono);color:${altMeta?'var(--orange)':'var(--text-dim)'}">${altMeta?altMeta.name:'Aucun — utilise le fichier source'}</div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-warning" style="font-size:11px;padding:4px 10px" onclick="setAltSavePath('${w}')">
+              📂 Choisir…
+            </button>
+            ${altMeta?`<button class="btn btn-danger" style="font-size:11px;padding:4px 8px" onclick="clearAltSavePath('${w}')">✕</button>`:''}
+          </div>
+        </div>
+        ${altMeta?`<div style="font-size:10.5px;color:var(--orange);margin-top:8px;padding:6px 8px;background:var(--orange-soft);border-radius:5px">⚠ Les sauvegardes seront envoyées vers "${altMeta.name}" et non vers le fichier source.</div>`:''}
+      </div>`;
+    }).join('')}
+  </div>
     ${['paye','tdb'].map(w=>{
       const meta=JSON.parse(localStorage.getItem('grh_file_'+w)||'null');
       return`<div class="admin-row">
@@ -2178,8 +3262,31 @@ function initAdminDrag(){
 // BADGES, CSV, NOTIFY
 // ═══════════════════════════════════════════════════════════
 function updateBadges(){
-  const m={paye:()=>MONTHS.reduce((s,m)=>s+DB['paye_'+m].length,0),n1:()=>DB['paye_N1'].length,cdd:()=>DB['tdb_cdd'].length,cnp:()=>DB['tdb_cnp'].length,stagiaires:()=>DB['tdb_stagiaires'].length,apprentis:()=>DB['tdb_apprentis'].length,experts:()=>DB['tdb_experts'].length,dispo:()=>DB['tdb_dispo'].length,'detach-sort':()=>DB['tdb_detach_sort'].length,'detach-entr':()=>DB['tdb_detach_entr'].length,mater:()=>DB['tdb_mater'].length,parental:()=>DB['tdb_parental'].length,indispo:()=>DB['tdb_indispo'].length,tpartiel:()=>DB['tdb_tpartiel'].length,sejour:()=>DB['tdb_sejour'].length,tpt:()=>DB['tdb_tpt'].length,at:()=>DB['tdb_at'].length};
-  Object.entries(m).forEach(([k,fn])=>{const el=document.getElementById('badge-'+k);if(el)el.textContent=fn();});
+  // Badges des onglets fixes
+  const fixed={
+    paye:()=>MONTHS.reduce((s,m)=>s+DB['paye_'+m].length,0),
+    n1:()=>DB['paye_N1'].length,
+    cdd:()=>DB['tdb_cdd'].length, cnp:()=>DB['tdb_cnp'].length,
+    stagiaires:()=>DB['tdb_stagiaires'].length, apprentis:()=>DB['tdb_apprentis'].length,
+    experts:()=>DB['tdb_experts'].length, dispo:()=>DB['tdb_dispo'].length,
+    'detach-sort':()=>DB['tdb_detach_sort'].length, 'detach-entr':()=>DB['tdb_detach_entr'].length,
+    mater:()=>DB['tdb_mater'].length, parental:()=>DB['tdb_parental'].length,
+    indispo:()=>DB['tdb_indispo'].length, tpartiel:()=>DB['tdb_tpartiel'].length,
+    sejour:()=>DB['tdb_sejour'].length, tpt:()=>DB['tdb_tpt'].length,
+    at:()=>DB['tdb_at'].length
+  };
+  Object.entries(fixed).forEach(([k,fn])=>{
+    const el=document.getElementById('badge-'+k);
+    if(el) el.textContent=fn();
+  });
+  // Badges des onglets dynamiques (VIEW_MAP contient tous les onglets)
+  Object.entries(VIEW_MAP).forEach(([viewId, vm])=>{
+    if(!vm.isDynamic && !vm.sheetName) return; // sauter les onglets fixes déjà traités
+    const el=document.getElementById('badge-'+viewId);
+    if(!el) return;
+    const data=DB[vm.dbKey()]||[];
+    el.textContent=data.length;
+  });
 }
 
 function exportCSV(){
@@ -2208,23 +3315,55 @@ function notify(msg){const el=document.getElementById('notify');document.getElem
   document.documentElement.setAttribute('data-theme', theme==='dark'?'':theme);
 })();
 
-// 2. Restaurer les onglets custom
+// 2. Restaurer les onglets (custom manuels + dynamiques découverts depuis Excel)
 (ADMIN.customTabs||[]).forEach(tab=>{
-  DB[tab.id]=[];
-  const customFields=[
-    {key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
-    {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'matricule',label:'Matricule',type:'text'},
-    ...(ADMIN.customCols[tab.id]||[]).map(c=>({key:c.key,label:c.label,type:c.type||'text',options:c.options||null})),
-    {key:'remarques',label:'Remarques',type:'textarea',full:true}
-  ];
-  if(!SCHEMAS_BASE[tab.id]){
-    SCHEMAS_BASE[tab.id]={title:tab.label,fields:customFields,cols:customFields.filter(f=>!f.full).map(f=>f.key)};
+  if(!DB[tab.id]) DB[tab.id]=[];
+
+  if(tab.isDynamic){
+    // Onglet découvert dynamiquement depuis le fichier Excel
+    // Le schéma sera recréé au chargement du fichier, mais on pré-crée
+    // un schéma minimal pour naviguer même sans fichier rechargé
+    if(!SCHEMAS_BASE[tab.id]){
+      const storedCols = (ADMIN.customCols[tab.id]||[]).map(c=>({
+        key:c.key, label:c.label, type:c.type||'text', options:c.options||null
+      }));
+      SCHEMAS_BASE[tab.id]={
+        title: tab.label,
+        fields: storedCols.length ? storedCols : [{key:'nom',label:'Nom',type:'text'}],
+        cols: storedCols.slice(0,8).map(f=>f.key),
+        isDynamic: true
+      };
+    }
+    if(!VIEW_MAP[tab.id]){
+      VIEW_MAP[tab.id]={
+        dbKey:()=>tab.id, schema:tab.id,
+        file:tab.file||'tdb', showMonths:false,
+        isDynamic:true, sheetName:tab.sheetName
+      };
+    }
+    addTabToNav(tab.id, tab.label, tab.file||'tdb');
+  } else {
+    // Onglet créé manuellement via l'interface admin
+    const customFields=[
+      {key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
+      {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'matricule',label:'Matricule',type:'text'},
+      ...(ADMIN.customCols[tab.id]||[]).map(c=>({key:c.key,label:c.label,type:c.type||'text',options:c.options||null})),
+      {key:'remarques',label:'Remarques',type:'textarea',full:true}
+    ];
+    if(!SCHEMAS_BASE[tab.id]){
+      SCHEMAS_BASE[tab.id]={
+        title:tab.label,
+        fields:customFields,
+        cols:customFields.filter(f=>!f.full).map(f=>f.key)
+      };
+    }
+    VIEW_MAP[tab.id]={dbKey:()=>tab.id, schema:tab.id, file:tab.file, showMonths:false};
+    addTabToNav(tab.id, tab.label, tab.file||'tdb');
   }
-  VIEW_MAP[tab.id]={dbKey:()=>tab.id,schema:tab.id,file:tab.file,showMonths:false};
-  addTabToNav(tab.id,tab.label);
 });
 
 // 3. Tenter le rechargement auto des fichiers Excel depuis IDB
+// (loadTdbWorkbook/loadPayeWorkbook découvriront les nouveaux onglets)
 updateBadges();
 tryAutoReload();
 </script>
