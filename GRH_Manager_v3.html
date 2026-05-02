@@ -236,6 +236,8 @@ tbody td:first-child{font-family:var(--mono);font-size:10.5px;color:var(--text-m
 /* notify */
 #notify{position:fixed;bottom:20px;right:20px;z-index:300;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:10px 15px;font-size:12.5px;display:none;align-items:center;gap:8px;box-shadow:0 4px 20px rgba(0,0,0,.4)}
 #notify.show{display:flex}
+#dirty-indicator{display:none;align-items:center;gap:5px;padding:3px 8px;border-radius:var(--r);background:var(--orange-soft);border:1px solid rgba(247,148,58,.3);font-size:10px;color:var(--orange);font-weight:600}
+#autosave-status{display:none;align-items:center;gap:5px;padding:3px 8px;border-radius:var(--r);background:var(--green-soft);border:1px solid rgba(46,204,122,.25);font-size:10px;color:var(--green)}
 .empty-state{padding:50px;text-align:center;color:var(--text-muted)}
 .empty-state .es-icon{font-size:32px;margin-bottom:8px;opacity:.35}
 
@@ -263,6 +265,8 @@ tbody td:first-child{font-family:var(--mono);font-size:10.5px;color:var(--text-m
         <div class="file-dot"></div><span id="fb-tdb-label">Tableau de Bord…</span>
       </div>
       <button class="save-btn" id="save-all-btn" onclick="saveAllFiles()" disabled>💾 Enregistrer</button>
+      <div id="dirty-indicator"><span>●</span><span>Modifications non sauvegardées</span></div>
+      <div id="autosave-status"><span>⏱</span><span id="autosave-status-text">Autosauvegarde active</span></div>
     </div>
     <div id="sb-nav">
       <div class="nav-group">
@@ -357,7 +361,7 @@ const IMPORTANCES=['Normal','Moyenne','Haute','Urgente'];
 // ═══════════════════════════════════════════════════════════
 function loadAdminConfig() {
   try { return JSON.parse(localStorage.getItem('grh_admin_config')||'null')||defaultAdminConfig(); }
-  catch(e) { return defaultAdminConfig(); }
+  catch { return defaultAdminConfig(); }
 }
 function saveAdminConfig() {
   localStorage.setItem('grh_admin_config', JSON.stringify(ADMIN));
@@ -383,16 +387,33 @@ function defaultAdminConfig() {
     },
     // Config dashboard
     dashConfig: {
-      kpiOrder: ['dispo','cdd','stagiaires','apprentis','at','mater','tpartiel','paye'],
+      kpiOrder: ['paye','n1','cdd','cnp','stagiaires','apprentis','experts','dispo','detach-sort','detach-entr','mater','parental','indispo','tpartiel','sejour','tpt','at','cdi','stag-conv','comite-med','retraite','agent60'],
       widgets: [
-        {id:'alerts',    enabled:true,  cols:2, title:'Alertes & Dates butoir'},
-        {id:'poleStats', enabled:true,  cols:1, title:'Dispos par pôle'},
-        {id:'srcStats',  enabled:true,  cols:1, title:'Alertes par source'},
-        {id:'recentPaye',enabled:false, cols:2, title:'Derniers mouvements paye', count:10, filterImp:''},
-        {id:'recentCdd', enabled:false, cols:1, title:'Derniers CDD', count:5, filterImp:''},
-        {id:'recentDispo',enabled:false,cols:1, title:'Dernières dispos', count:5, filterImp:''},
-        {id:'recentAt',  enabled:false, cols:1, title:'Derniers AT', count:5, filterImp:''},
-        {id:'recentMater',enabled:false,cols:1, title:'Dernières maternités', count:5, filterImp:''},
+        {id:'alerts',         enabled:true,  cols:2, title:'Alertes & Dates butoir'},
+        {id:'poleStats',      enabled:true,  cols:1, title:'Dispos par pôle'},
+        {id:'srcStats',       enabled:true,  cols:1, title:'Alertes par source'},
+        {id:'recentPaye',     enabled:false, cols:2, title:'Derniers mouvements paye',       count:10, filterImp:'', visibleCols:['pole','matricule','nom','prenom']},
+        {id:'recentN1',       enabled:false, cols:1, title:'Derniers mvts N+1',              count:5,  filterImp:''},
+        {id:'recentCdd',      enabled:false, cols:1, title:'Derniers CDD',                   count:5,  filterImp:''},
+        {id:'recentCnp',      enabled:false, cols:1, title:'Derniers CNP',                   count:5,  filterImp:''},
+        {id:'recentStagiaires',enabled:false,cols:1, title:'Derniers stagiaires',            count:5,  filterImp:''},
+        {id:'recentApprentis',enabled:false, cols:1, title:'Derniers apprentis',             count:5,  filterImp:''},
+        {id:'recentExperts',  enabled:false, cols:1, title:'Derniers experts',               count:5,  filterImp:''},
+        {id:'recentDispo',    enabled:false, cols:1, title:'Dernières dispos',               count:5,  filterImp:''},
+        {id:'recentDetachSort',enabled:false,cols:1, title:'Derniers détach. sortants',      count:5,  filterImp:''},
+        {id:'recentDetachEntr',enabled:false,cols:1, title:'Derniers détach. entrants',      count:5,  filterImp:''},
+        {id:'recentMater',    enabled:false, cols:1, title:'Dernières maternités',           count:5,  filterImp:''},
+        {id:'recentParental', enabled:false, cols:1, title:'Derniers congés parentaux',      count:5,  filterImp:''},
+        {id:'recentIndispo',  enabled:false, cols:1, title:'Dernières indispos phys.',       count:5,  filterImp:''},
+        {id:'recentTpartiel', enabled:false, cols:1, title:'Derniers temps partiels',        count:5,  filterImp:''},
+        {id:'recentSejour',   enabled:false, cols:1, title:'Dernières cartes séjour',        count:5,  filterImp:''},
+        {id:'recentTpt',      enabled:false, cols:1, title:'Derniers T. partiels thér.',     count:5,  filterImp:''},
+        {id:'recentAt',       enabled:false, cols:1, title:'Derniers AT',                    count:5,  filterImp:''},
+        {id:'recentCdi',      enabled:false, cols:1, title:'Derniers CDI',                   count:5,  filterImp:''},
+        {id:'recentStagConv', enabled:false, cols:1, title:'Derniers stag. conventionnés',   count:5,  filterImp:''},
+        {id:'recentComiteMed',enabled:false, cols:1, title:'Derniers comité médical',        count:5,  filterImp:''},
+        {id:'recentRetraite', enabled:false, cols:1, title:'Dernières retraites',            count:5,  filterImp:''},
+        {id:'recentAgent60',  enabled:false, cols:1, title:'Derniers agents > 60 ans',       count:5,  filterImp:''},
       ]
     },
     // Templates sauvegardés
@@ -401,12 +422,30 @@ function defaultAdminConfig() {
     settings: {
       alertHorizon: 180,
       defaultImportance: 'Normal',
-      dateFormat: 'fr'
+      dateFormat: 'fr',
+      autoSave: {
+        enabled: false,
+        intervalMinutes: 5
+      }
     }
   };
 }
 
 let ADMIN = loadAdminConfig();
+
+// Migrate stored config: add any missing KPI keys and widgets from defaults
+(function migrateAdminConfig(){
+  const def=defaultAdminConfig();
+  // Ensure kpiOrder contains all keys defined in defaults
+  if(!ADMIN.dashConfig) ADMIN.dashConfig=def.dashConfig;
+  def.dashConfig.kpiOrder.forEach(k=>{if(!ADMIN.dashConfig.kpiOrder.includes(k))ADMIN.dashConfig.kpiOrder.push(k);});
+  // Ensure all default widgets are present
+  def.dashConfig.widgets.forEach(dw=>{
+    const exists=ADMIN.dashConfig.widgets.find(w=>w.id===dw.id);
+    if(!exists) ADMIN.dashConfig.widgets.push({...dw});
+    else if(dw.id==='recentPaye'&&exists.visibleCols===undefined) exists.visibleCols=dw.visibleCols;
+  });
+})();
 
 // ═══════════════════════════════════════════════════════════
 // SCHEMAS DYNAMIQUES
@@ -713,13 +752,6 @@ function getDataKeys(tableKey){
   return ordered;
 }
 
-function getEffectiveCols(tableKey){
-  const base=tableKey==='paye_'?[...PAYE_COLS_BASE]:tableKey==='paye_N1'?[...N1_COLS]:TDB_MAP_BASE[tableKey]?[...TDB_MAP_BASE[tableKey].cols]:[];
-  const custom=(ADMIN.customCols[tableKey]||[]).map(c=>c.key);
-  if(ADMIN.importanceEnabled[tableKey]) base.push('_importance');
-  return [...base,...custom];
-}
-
 function getCustomColDefs(tableKey){
   const defs=[];
   if(ADMIN.importanceEnabled[tableKey]) defs.push({key:'_importance',label:'Importance',type:'select',options:IMPORTANCES,isImportance:true});
@@ -765,6 +797,10 @@ let editingId=null, searchQuery='', filterPole='', filterImp='';
 let sortCol=null, sortDir=1, alertFilter='all', adminTab='columns';
 let wbPaye=null, wbTdb=null;
 let dirtyPaye=false, dirtyTdb=false;
+// Cache des alertes — invalidé à chaque modification
+let _alertsCache=null, _alertsCacheDate=null;
+// Timer de sauvegarde automatique
+let _autoSaveTimer=null;
 
 // ═══════════════════════════════════════════════════════════
 // EXCEL READ/WRITE
@@ -828,30 +864,6 @@ function isoToDisplay(iso) {
 
 // ─── DÉTECTION DES COLONNES DATE ──────────────────────────
 // Construire un set des indices de style qui sont des dates dans un workbook
-function buildDateStyleSet(wb) {
-  // SheetJS expose les styles via wb.SSF et les cellules via cell.s (index de style)
-  // On utilise aussi une heuristique sur le nom de colonne
-  const STD_DATE_FMTIDS = new Set([14,15,16,17,18,19,20,21,22,45,46,47]);
-  const dateStyleIndices = new Set();
-
-  // Récupérer les styles depuis wb.Styles si disponible
-  if(wb.Styles && wb.Styles.Formats) {
-    try {
-      const fmts = wb.Styles.Formats; // {numFmtId: formatCode}
-      if(wb.SSF) {
-        // Chercher dans wb.SSF les formats date
-        Object.entries(wb.SSF).forEach(([id,fmt]) => {
-          const fmtId = parseInt(id);
-          if(STD_DATE_FMTIDS.has(fmtId) || (fmt && /[dy]/i.test(fmt) && !/^[h:ms aAp\/\\.,"]+$/.test(fmt))) {
-            dateStyleIndices.add(fmtId);
-          }
-        });
-      }
-    } catch(e) {}
-  }
-
-  return dateStyleIndices;
-}
 
 // Noms de colonnes qui contiennent des dates (heuristique fiable)
 function isDateCol(colKey) {
@@ -1063,8 +1075,6 @@ const HEADER_ALIASES = {
   maitre:           ['maitreDapprentissage','maitre'],
   maNbi:            ['maavecnbioui','manbi','maavecnbioui/non'],
   changements:      ['changementsDeremuner','changements'],
-  codeGestion:      ['codegestion'],
-
   // ── CDI ──────────────────────────────────────────────────
   dateDebutCdi:     ['datededebutdecdi','datedebutdecdi','datedebutcdi'],
   echeance3ans:     ['echeancetriennale3ans','echeance3ans','echeance3'],
@@ -1146,7 +1156,6 @@ function resolveHeader(headerValue) {
 // 4. Aucune donnée n'est jamais ignorée
 function sheetToRecords(ws, colKeys, tableKey, dataFirstRow) {
   if(!ws) return [];
-  const firstDataRow = (dataFirstRow !== undefined ? dataFirstRow : 1);
   const raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:true, cellDates:false});
 
   // Trouver la vraie ligne d'en-tête : la première ligne non-vide dans raw
@@ -1244,7 +1253,9 @@ function sheetToRecords(ws, colKeys, tableKey, dataFirstRow) {
 
       if(looksLikeDate && v !== '') {
         const converted = excelDateToISO(v);
-        obj[key] = converted || String(v).trim();
+        // Si la conversion échoue, stocker '' plutôt que la valeur brute
+        // pour éviter de propager des dates invalides dans les calculs d'alertes
+        obj[key] = converted;
       } else {
         const s = String(v).trim();
         // Nettoyer les dates JS mal converties
@@ -1265,6 +1276,11 @@ function sheetToRecords(ws, colKeys, tableKey, dataFirstRow) {
 
 function loadPayeWorkbook(wb){
   wbPaye = wb;
+  // Vérifier les onglets mensuels manquants
+  const missingMonths = MONTHS.filter(m => !wb.Sheets[m]);
+  if(missingMonths.length > 0 && missingMonths.length < MONTHS.length) {
+    notify('⚠ Onglets manquants dans Cahier de Paye : ' + missingMonths.join(', '));
+  }
   // Onglets mensuels connus
   MONTHS.forEach(m => {
     DB['paye_'+m] = sheetToRecords(wb.Sheets[m], PAYE_COLS_BASE, 'paye_', 1);
@@ -1294,6 +1310,14 @@ function loadPayeWorkbook(wb){
 
 function loadTdbWorkbook(wb){
   wbTdb = wb;
+  // Vérifier les onglets TDB manquants
+  const missingSheets = Object.entries(TDB_MAP_BASE)
+    .filter(([, {sheet}]) => !wb.Sheets[sheet])
+    .map(([, {sheet}]) => sheet);
+  if(missingSheets.length > 0 && missingSheets.length < Object.keys(TDB_MAP_BASE).length) {
+    const preview = missingSheets.slice(0, 4).join(', ') + (missingSheets.length > 4 ? '…' : '');
+    notify('⚠ Onglets manquants dans TDB : ' + preview);
+  }
   // Charger tous les onglets connus (structure fixe)
   Object.entries(TDB_MAP_BASE).forEach(([key, {sheet, cols}]) => {
     const ws = wb.Sheets[sheet];
@@ -1340,7 +1364,7 @@ function loadDynamicSheet(wb, sheetName, fileKey){
       return;
     }
   }
-  for(const [viewId, vm] of Object.entries(VIEW_MAP)) {
+  for(const vm of Object.values(VIEW_MAP)) {
     if(vm.sheetName && sheetsMatch(vm.sheetName, sheetName)) {
       const ws = wb.Sheets[sheetName];
       if(ws) DB[vm.dbKey()] = sheetToRecords(ws, [], vm.dbKey(), 1);
@@ -1491,9 +1515,9 @@ function _rebuildDynSchema(viewId, tableKey, sheetName, ws){
 // ─── IDB ──────────────────────────────────────────────────
 const IDB_NAME='grh_manager_v2', IDB_STORE='files';
 function openIDB(){return new Promise((res,rej)=>{const r=indexedDB.open(IDB_NAME,1);r.onupgradeneeded=e=>e.target.result.createObjectStore(IDB_STORE);r.onsuccess=e=>res(e.target.result);r.onerror=e=>rej(e.target.error);});}
-async function idbSet(key,val){try{const db=await openIDB();return new Promise((res,rej)=>{const tx=db.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).put(val,key);tx.oncomplete=()=>res();tx.onerror=e=>rej(e.target.error);});}catch(e){}}
-async function idbGet(key){try{const db=await openIDB();return new Promise((res,rej)=>{const tx=db.transaction(IDB_STORE,'readonly');const r=tx.objectStore(IDB_STORE).get(key);r.onsuccess=()=>res(r.result);r.onerror=e=>rej(e.target.error);});}catch(e){return null;}}
-async function idbDel(key){try{const db=await openIDB();return new Promise(res=>{const tx=db.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).delete(key);tx.oncomplete=()=>res();});}catch(e){}}
+async function idbSet(key,val){try{const db=await openIDB();return new Promise((res,rej)=>{const tx=db.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).put(val,key);tx.oncomplete=()=>res();tx.onerror=e=>rej(e.target.error);});}catch{}}
+async function idbGet(key){try{const db=await openIDB();return new Promise((res,rej)=>{const tx=db.transaction(IDB_STORE,'readonly');const r=tx.objectStore(IDB_STORE).get(key);r.onsuccess=()=>res(r.result);r.onerror=e=>rej(e.target.error);});}catch{return null;}}
+async function idbDel(key){try{const db=await openIDB();return new Promise(res=>{const tx=db.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).delete(key);tx.oncomplete=()=>res();});}catch{}}
 
 // ─── VARIABLES FICHIERS ────────────────────────────────────
 let fileNamePaye=null, fileNameTdb=null;
@@ -1731,6 +1755,8 @@ async function saveAllFiles(){
     }
   }
 
+  _alertsCache = null; // Invalider le cache des alertes après sauvegarde
+  updateDirtyIndicator();
   btn.disabled=false; btn.textContent='💾 Enregistrer';
   if(ok) hideFirstSaveBanner();
   notify(ok?'✓ Fichiers sauvegardés (styles préservés)':'⚠ Sauvegarde partielle');
@@ -1958,12 +1984,61 @@ function hideFirstSaveBanner(){
   const b=document.getElementById('first-save-banner'); if(b) b.remove();
 }
 
+// ─── INDICATEUR MODIFICATIONS NON SAUVEGARDÉES ────────────
+function updateDirtyIndicator(){
+  const isDirty = dirtyPaye || dirtyTdb;
+  const el = document.getElementById('dirty-indicator');
+  if(el) el.style.display = isDirty ? 'flex' : 'none';
+  const btn = document.getElementById('save-all-btn');
+  if(btn && !btn.disabled) {
+    btn.textContent = isDirty ? '💾 Enregistrer*' : '💾 Enregistrer';
+  }
+}
+
+// ─── CACHE DES ALERTES ────────────────────────────────────
+// Evite de recalculer toutes les alertes à chaque changement de vue
+function getAlerts(today){
+  const todayKey = today.toDateString();
+  if(_alertsCache && _alertsCacheDate === todayKey && !dirtyPaye && !dirtyTdb){
+    return _alertsCache;
+  }
+  _alertsCache = collectAllAlerts(today);
+  _alertsCacheDate = todayKey;
+  return _alertsCache;
+}
+
+// ─── SAUVEGARDE AUTOMATIQUE ───────────────────────────────
+function startAutoSave(){
+  stopAutoSave();
+  const s = ADMIN.settings.autoSave;
+  if(!s || !s.enabled) return;
+  const ms = Math.max(1, s.intervalMinutes || 5) * 60 * 1000;
+  _autoSaveTimer = setInterval(async () => {
+    if(dirtyPaye || dirtyTdb){
+      await saveAllFiles();
+    }
+  }, ms);
+  // Mettre à jour l'indicateur de statut
+  const el = document.getElementById('autosave-status');
+  const txt = document.getElementById('autosave-status-text');
+  if(el) el.style.display = 'flex';
+  if(txt) txt.textContent = `Autosauvegarde toutes les ${s.intervalMinutes} min`;
+}
+
+function stopAutoSave(){
+  if(_autoSaveTimer){ clearInterval(_autoSaveTimer); _autoSaveTimer = null; }
+  const el = document.getElementById('autosave-status');
+  if(el) el.style.display = 'none';
+}
+
 function markDirty(which){
   if(which==='paye')dirtyPaye=true;else dirtyTdb=true;
+  _alertsCache = null; // Invalider le cache des alertes
+  updateDirtyIndicator();
   const btn=document.getElementById('save-all-btn');if(!btn)return;
-  btn.disabled=false;btn.textContent='💾 Enregistrer*';
+  btn.disabled=false;
   btn.style.background='var(--orange)';
-  setTimeout(()=>{btn.style.background='';btn.textContent='💾 Enregistrer';},200);
+  setTimeout(()=>{btn.style.background='';updateDirtyIndicator();},300);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2036,19 +2111,33 @@ function collectAllAlerts(today){
 }
 
 const KPI_DEFS={
-  dispo:{label:'Disponibilités',db:'tdb_dispo',color:'blue',sub:'agents hors organisme'},
-  cdd:{label:'CDD',db:'tdb_cdd',color:'orange',sub:'contrats en cours'},
-  stagiaires:{label:'Stagiaires',db:'tdb_stagiaires',color:'green',sub:'en cours'},
-  apprentis:{label:'Apprentis',db:'tdb_apprentis',color:'purple',sub:'en cours'},
-  at:{label:'Accidents travail',db:'tdb_at',color:'red',sub:'dossiers'},
-  mater:{label:'Maternités',db:'tdb_mater',color:'yellow',sub:'en cours'},
-  tpartiel:{label:'Temps partiels',db:'tdb_tpartiel',color:'blue',sub:'en cours'},
-  paye:{label:()=>'Paye '+currentMonth,db:()=>'paye_'+currentMonth,color:'green',sub:'mouvements'},
+  paye:         {label:()=>'Paye '+currentMonth,  db:()=>'paye_'+currentMonth, color:'green',  sub:'mouvements'},
+  n1:           {label:'Report N+1',              db:'paye_N1',                color:'green',  sub:'mouvements'},
+  cdd:          {label:'CDD',                     db:'tdb_cdd',                color:'orange', sub:'contrats en cours'},
+  cnp:          {label:'CNP',                     db:'tdb_cnp',                color:'orange', sub:'contrats'},
+  stagiaires:   {label:'Stagiaires',              db:'tdb_stagiaires',         color:'green',  sub:'en cours'},
+  apprentis:    {label:'Apprentis',               db:'tdb_apprentis',          color:'purple', sub:'en cours'},
+  experts:      {label:'Experts',                 db:'tdb_experts',            color:'blue',   sub:'en position'},
+  dispo:        {label:'Disponibilités',          db:'tdb_dispo',              color:'blue',   sub:'hors organisme'},
+  'detach-sort':{label:'Détach. sortants',        db:'tdb_detach_sort',        color:'blue',   sub:'agents'},
+  'detach-entr':{label:'Détach. entrants',        db:'tdb_detach_entr',        color:'blue',   sub:'agents'},
+  mater:        {label:'Maternités',              db:'tdb_mater',              color:'yellow', sub:'en cours'},
+  parental:     {label:'Congé parental',          db:'tdb_parental',           color:'purple', sub:'en cours'},
+  indispo:      {label:'Indispo. phys.',          db:'tdb_indispo',            color:'red',    sub:'agents'},
+  tpartiel:     {label:'Temps partiels',          db:'tdb_tpartiel',           color:'blue',   sub:'en cours'},
+  sejour:       {label:'Cartes séjour',           db:'tdb_sejour',             color:'orange', sub:'en cours'},
+  tpt:          {label:'T. partiel thér.',        db:'tdb_tpt',                color:'gray',   sub:'en cours'},
+  at:           {label:'Accidents travail',       db:'tdb_at',                 color:'red',    sub:'dossiers'},
+  cdi:          {label:'CDI',                     db:'tdb_cdi',                color:'green',  sub:'contrats'},
+  'stag-conv':  {label:'Stag. conv.',             db:'tdb_stag_conv',          color:'green',  sub:'en cours'},
+  'comite-med': {label:'Comité méd.',             db:'tdb_comite_med',         color:'red',    sub:'dossiers'},
+  retraite:     {label:'Retraite',                db:'tdb_retraite',           color:'gray',   sub:'agents'},
+  agent60:      {label:'Agents > 60 ans',         db:'tdb_agent60',            color:'yellow', sub:'agents'},
 };
 
 function renderDashboard(){
   const today=new Date();
-  const allAlerts=collectAllAlerts(today);
+  const allAlerts=getAlerts(today);
   const nExp=allAlerts.filter(a=>a.urgency==='expired').length;
   const nCrit=allAlerts.filter(a=>a.urgency==='critical').length;
   const nWarn=allAlerts.filter(a=>a.urgency==='warning').length;
@@ -2061,12 +2150,12 @@ function renderDashboard(){
 
   // KPIs
   const kpiOrder=ADMIN.dashConfig.kpiOrder||Object.keys(KPI_DEFS);
-  let kpiHtml=kpiOrder.map(k=>{
+  const kpiHtml=kpiOrder.map(k=>{
     const d=KPI_DEFS[k];if(!d)return'';
     const db=typeof d.db==='function'?d.db():d.db;
     const label=typeof d.label==='function'?d.label():d.label;
     const n=(DB[db]||[]).length;
-    return`<div class="kpi-card ${d.color}" onclick="setView('${k==='paye'?'paye':k}',document.querySelector('[data-view=\\'${k==='paye'?'paye':k}\\']'))"><div class="kpi-label">${label}</div><div class="kpi-value">${n}</div><div class="kpi-sub">${d.sub}</div></div>`;
+    return`<div class="kpi-card ${d.color}" onclick="setView('${k}',document.querySelector('[data-view=\\'${k}\\']'))"><div class="kpi-label">${label}</div><div class="kpi-value">${n}</div><div class="kpi-sub">${d.sub}</div></div>`;
   }).join('');
 
   // Widgets
@@ -2116,27 +2205,52 @@ function renderWidget(w,allAlerts,nExp,nCrit,nWarn,nSoon,srcTags,srcE,maxSrc,pol
         srcE.map(([s,n])=>`<div class="stat-row"><span class="chip ${srcTags[s]||'chip-gray'}" style="font-size:9px;min-width:85px;text-align:center">${s}</span><div class="stat-bar-wrap"><div class="stat-bar" style="width:${Math.round(n/maxSrc*100)}%"></div></div><div class="stat-val">${n}</div></div>`).join('')}
     </div>`;
   }
-  // Recent records widgets
-  const recentMap={recentPaye:'paye_'+currentMonth,recentCdd:'tdb_cdd',recentDispo:'tdb_dispo',recentAt:'tdb_at',recentMater:'tdb_mater'};
-  const viewMap2={recentPaye:'paye',recentCdd:'cdd',recentDispo:'dispo',recentAt:'at',recentMater:'mater'};
-  const schemaMap={recentPaye:'paye',recentCdd:'cdd',recentDispo:'dispo',recentAt:'at',recentMater:'mater'};
-  if(recentMap[w.id]){
-    let data=[...(DB[recentMap[w.id]]||[])];
+  // Recent records widgets — unified map: id → {db, view, schema}
+  const RECENT_CFG={
+    recentPaye:     {db:()=>'paye_'+currentMonth, view:'paye',        schema:'paye'},
+    recentN1:       {db:'paye_N1',                view:'n1',          schema:'paye'},
+    recentCdd:      {db:'tdb_cdd',                view:'cdd',         schema:'cdd'},
+    recentCnp:      {db:'tdb_cnp',                view:'cnp',         schema:'cnp'},
+    recentStagiaires:{db:'tdb_stagiaires',         view:'stagiaires',  schema:'stagiaires'},
+    recentApprentis:{db:'tdb_apprentis',           view:'apprentis',   schema:'apprentis'},
+    recentExperts:  {db:'tdb_experts',             view:'experts',     schema:'experts'},
+    recentDispo:    {db:'tdb_dispo',               view:'dispo',       schema:'dispo'},
+    recentDetachSort:{db:'tdb_detach_sort',        view:'detach-sort', schema:'detach_sort'},
+    recentDetachEntr:{db:'tdb_detach_entr',        view:'detach-entr', schema:'detach_entr'},
+    recentMater:    {db:'tdb_mater',               view:'mater',       schema:'mater'},
+    recentParental: {db:'tdb_parental',            view:'parental',    schema:'parental'},
+    recentIndispo:  {db:'tdb_indispo',             view:'indispo',     schema:'indispo'},
+    recentTpartiel: {db:'tdb_tpartiel',            view:'tpartiel',    schema:'tpartiel'},
+    recentSejour:   {db:'tdb_sejour',              view:'sejour',      schema:'sejour'},
+    recentTpt:      {db:'tdb_tpt',                 view:'tpt',         schema:'tpt'},
+    recentAt:       {db:'tdb_at',                  view:'at',          schema:'at'},
+    recentCdi:      {db:'tdb_cdi',                 view:'cdi',         schema:'cdi'},
+    recentStagConv: {db:'tdb_stag_conv',           view:'stag-conv',   schema:'stag_conv'},
+    recentComiteMed:{db:'tdb_comite_med',          view:'comite-med',  schema:'comite_med'},
+    recentRetraite: {db:'tdb_retraite',            view:'retraite',    schema:'retraite'},
+    recentAgent60:  {db:'tdb_agent60',             view:'agent60',     schema:'agent60'},
+  };
+  const rcfg=RECENT_CFG[w.id];
+  if(rcfg){
+    const dbKey=typeof rcfg.db==='function'?rcfg.db():rcfg.db;
+    let data=[...(DB[dbKey]||[])];
     if(w.filterImp)data=data.filter(r=>r._importance===w.filterImp);
     data=data.slice(-Math.min(w.count||5,data.length)).reverse();
-    const schema=SCHEMAS_BASE[schemaMap[w.id]];
-    const dispCols=(schema?schema.cols.slice(0,4):[]);
-    const impEnabled=ADMIN.importanceEnabled[viewToTableKey(schemaMap[w.id])];
+    const schema=SCHEMAS_BASE[rcfg.schema];
+    const dispCols=w.id==='recentPaye'
+      ?(w.visibleCols&&w.visibleCols.length?w.visibleCols:schema?schema.cols.slice(0,4):[])
+      :(schema?schema.cols.slice(0,4):[]);
+    const impEnabled=ADMIN.importanceEnabled[viewToTableKey(rcfg.schema)];
     return`<div class="dash-card">
       <div class="dash-card-title">${w.title}
         <span style="margin-left:auto;font-size:10px;color:var(--text-dim);font-weight:400">${data.length} entrée${data.length!==1?'s':''}</span>
-        <span style="cursor:pointer;font-size:11px;color:var(--accent)" onclick="setView('${viewMap2[w.id]}',document.querySelector('[data-view=\\'${viewMap2[w.id]}\\']'))">→ Voir tout</span>
+        <span style="cursor:pointer;font-size:11px;color:var(--accent)" onclick="setView('${rcfg.view}',document.querySelector('[data-view=\\'${rcfg.view}\\']'))">→ Voir tout</span>
       </div>
       ${data.length===0?`<div style="color:var(--text-muted);font-size:11px;padding:8px 0">Aucune donnée${w.filterImp?' pour importance "'+w.filterImp+'"':''}</div>`:`
       <div style="overflow-x:auto">
         <table class="recent-table">
-          <thead><tr>${impEnabled?'<th>Imp.</th>':''} ${dispCols.map(c=>{const f=schema.fields.find(f=>f.key===c);return`<th>${f?f.label:c}</th>`}).join('')}</tr></thead>
-          <tbody>${data.map(r=>`<tr onclick="goToRecord('${viewMap2[w.id]}',${r.id})" style="cursor:pointer">${impEnabled?`<td>${renderImpChip(r._importance)}</td>`:''} ${dispCols.map(c=>`<td title="${r[c]||''}">${renderCell(c,r[c])}</td>`).join('')}</tr>`).join('')}</tbody>
+          <thead><tr>${impEnabled?'<th>Imp.</th>':''} ${dispCols.map(c=>{const f=schema&&schema.fields.find(f=>f.key===c);return`<th>${f?f.label:c}</th>`}).join('')}</tr></thead>
+          <tbody>${data.map(r=>`<tr onclick="goToRecord('${rcfg.view}',${r.id})" style="cursor:pointer">${impEnabled?`<td>${renderImpChip(r._importance)}</td>`:''} ${dispCols.map(c=>`<td title="${r[c]||''}">${renderCell(c,r[c])}</td>`).join('')}</tr>`).join('')}</tbody>
         </table>
       </div>`}
     </div>`;
@@ -2182,7 +2296,7 @@ function renderImpChip(v){
   return`<span class="imp-chip imp-normal">${v}</span>`;
 }
 
-function setAlertFilter(f){alertFilter=f;const today=new Date();const all=collectAllAlerts(today);const st={'Disponibilités':'chip-blue','CDD':'chip-orange','CNP':'chip-orange','Apprentis':'chip-purple','Experts':'chip-blue','Détach. sortants':'chip-blue','Détach. entrants':'chip-blue','Stagiaires':'chip-green','Indispo phys.':'chip-red','Temps partiel':'chip-gray','TPT':'chip-gray','Congé parental':'chip-gray','Cartes séjour':'chip-orange'};const el=document.getElementById('alerts-list');if(el)el.innerHTML=renderAlertsList(all,st);}
+function setAlertFilter(f){alertFilter=f;const today=new Date();const all=getAlerts(today);const st={'Disponibilités':'chip-blue','CDD':'chip-orange','CNP':'chip-orange','Apprentis':'chip-purple','Experts':'chip-blue','Détach. sortants':'chip-blue','Détach. entrants':'chip-blue','Stagiaires':'chip-green','Indispo phys.':'chip-red','Temps partiel':'chip-gray','TPT':'chip-gray','Congé parental':'chip-gray','Cartes séjour':'chip-orange'};const el=document.getElementById('alerts-list');if(el)el.innerHTML=renderAlertsList(all,st);}
 function goToRecord(view,id){const nav=document.querySelector(`[data-view="${view}"]`);setView(view,nav);setTimeout(()=>{const r=document.querySelector(`tr[data-id="${id}"]`);if(r){r.scrollIntoView({behavior:'smooth',block:'center'});r.classList.add('selected')}},120);}
 
 // ═══════════════════════════════════════════════════════════
@@ -2269,7 +2383,7 @@ function renderCell(col, val, headerLabel){
         const cls = diff<0?'color:var(--red)':diff<60?'color:var(--orange)':'';
         return `<span style="font-family:var(--mono);font-size:10.5px;${cls}">${isoToDisplay(iso)}</span>`;
       }
-    }catch(e){}
+    }catch{}
     return `<span style="font-family:var(--mono);font-size:10.5px">${isoToDisplay(iso)||s}</span>`;
   }
 
@@ -2380,23 +2494,6 @@ function renderForm(schema,data){
   }</div>`).join('')}</div>`;
 }
 
-function saveModal(){
-  const vm=VIEW_MAP[currentView];if(!vm)return;
-  const schema=getSchema(vm.schema);const data=DB[vm.dbKey()];
-  const obj={};schema.fields.forEach(f=>{const el=document.getElementById('f_'+f.key);if(el)obj[f.key]=el.value;});
-  if(editingId){const idx=data.findIndex(r=>r.id===editingId);if(idx>=0)data[idx]={...data[idx],...obj};}
-  else{obj.id=nextId++;data.push(obj);}
-  closeModal();const tb=document.getElementById('table-body');if(tb)tb.innerHTML=renderRows(vm,schema);
-  updateBadges();markDirty(vm.file);notify(editingId?'✓ Modifié':'✓ Ajouté');
-}
-
-function deleteRow(id){
-  if(!confirm('Supprimer ?'))return;
-  const vm=VIEW_MAP[currentView];if(!vm)return;
-  const data=DB[vm.dbKey()];const idx=data.findIndex(r=>r.id===id);if(idx>=0)data.splice(idx,1);
-  const tb=document.getElementById('table-body');if(tb)tb.innerHTML=renderRows(vm,getSchema(vm.schema));
-  updateBadges();markDirty(vm.file);notify('🗑 Supprimé');
-}
 
 // ═══════════════════════════════════════════════════════════
 // PARAMÉTRAGE PAYE
@@ -2635,7 +2732,7 @@ function navDrop(e){
   applyNavOrder();
   setAdminTab('navigation');
 }
-function navDragEnd(e){
+function navDragEnd(){
   if(_navDragSrc) _navDragSrc.style.opacity = '';
   document.querySelectorAll('.nav-order-item').forEach(el => {
     el.style.borderColor = '';
@@ -3118,7 +3215,7 @@ function renderAdminDashboard(){
   <div class="admin-section">
     <div class="admin-section-title">Ordre des KPI (glisser-déposer)</div>
     <div id="kpi-sort-list" style="display:flex;flex-wrap:wrap;gap:8px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r)">
-      ${kpiOrder.map((k,i)=>{const d=KPI_DEFS[k];if(!d)return'';return`<div class="col-tag" draggable="true" data-kpi="${k}" ondragstart="kpiDragStart(event)" ondragover="event.preventDefault()" ondrop="kpiDrop(event,'${k}')">⠿ ${typeof d.label==='function'?d.label():d.label}</div>`}).join('')}
+      ${kpiOrder.map(k=>{const d=KPI_DEFS[k];if(!d)return'';return`<div class="col-tag" draggable="true" data-kpi="${k}" ondragstart="kpiDragStart(event)" ondragover="event.preventDefault()" ondrop="kpiDrop(event,'${k}')">⠿ ${typeof d.label==='function'?d.label():d.label}</div>`}).join('')}
     </div>
   </div>
   <div class="admin-section">
@@ -3136,14 +3233,30 @@ function renderAdminDashboard(){
 }
 
 function renderWidgetEditor(w){
-  const recentMap={recentPaye:'Cahier de paye',recentCdd:'CDD',recentDispo:'Disponibilités',recentAt:'Accidents travail',recentMater:'Maternité'};
-  const isRecent=!!recentMap[w.id];
+  const recentLabels={
+    recentPaye:'Cahier de paye',recentN1:'Report N+1',recentCdd:'CDD',recentCnp:'CNP',
+    recentStagiaires:'Stagiaires',recentApprentis:'Apprentis',recentExperts:'Experts',
+    recentDispo:'Disponibilités',recentDetachSort:'Détach. sortants',recentDetachEntr:'Détach. entrants',
+    recentMater:'Maternité',recentParental:'Congé parental',recentIndispo:'Indispo phys.',
+    recentTpartiel:'Temps partiel',recentSejour:'Cartes séjour',recentTpt:'T. partiel thér.',
+    recentAt:'Accidents travail',recentCdi:'CDI',recentStagConv:'Stag. conv.',
+    recentComiteMed:'Comité médical',recentRetraite:'Retraite',recentAgent60:'Agents > 60 ans',
+  };
+  const isRecent=!!recentLabels[w.id];
+  const isPayeRecent=(w.id==='recentPaye');
+  const payeFields=isPayeRecent?(SCHEMAS_BASE.paye?SCHEMAS_BASE.paye.fields:[]):[];
+  const curCols=w.visibleCols||['pole','matricule','nom','prenom'];
   return`<div class="widget-item" draggable="true" data-widget="${w.id}">
   <span class="widget-move">⠿</span>
   <input type="checkbox" id="w-en-${w.id}" ${w.enabled?'checked':''}>
   <div style="flex:1">
     <div style="font-size:12.5px;font-weight:500">${w.title}</div>
-    ${isRecent?`<div style="font-size:11px;color:var(--text-muted);margin-top:3px">${recentMap[w.id]}</div>`:''}
+    ${isRecent?`<div style="font-size:11px;color:var(--text-muted);margin-top:3px">${recentLabels[w.id]}</div>`:''}
+    ${isPayeRecent?`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:5px">
+      ${payeFields.filter(f=>f.key!=='remarques').map(f=>`<label style="display:flex;align-items:center;gap:3px;font-size:10.5px;cursor:pointer;white-space:nowrap">
+        <input type="checkbox" data-wcol="${w.id}" value="${f.key}" ${curCols.includes(f.key)?'checked':''} style="accent-color:var(--purple);width:12px;height:12px">${f.label}
+      </label>`).join('')}
+    </div>`:''}
   </div>
   <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
     <div style="font-size:10.5px;color:var(--text-muted)">Largeur:</div>
@@ -3170,6 +3283,10 @@ function applyDashConfig(){
     const cols=document.getElementById('w-cols-'+w.id);if(cols)w.cols=parseInt(cols.value);
     const cnt=document.getElementById('w-cnt-'+w.id);if(cnt)w.count=parseInt(cnt.value);
     const imp=document.getElementById('w-imp-'+w.id);if(imp)w.filterImp=imp.value;
+    if(w.id==='recentPaye'){
+      const checked=[...document.querySelectorAll(`[data-wcol="${w.id}"]:checked`)].map(el=>el.value);
+      w.visibleCols=checked.length?checked:['pole','matricule','nom','prenom'];
+    }
   });
   saveAdminConfig();notify('✓ Dashboard mis à jour');
   // Re-render dashboard if active
@@ -3338,7 +3455,7 @@ function importConfig(event){
         Object.assign(ADMIN,imported);
       }
       saveAdminConfig();notify('✓ Configuration importée');setAdminTab('templates');
-    }catch(ex){notify('⚠ Fichier JSON invalide');}
+    }catch{notify('⚠ Fichier JSON invalide');}
   };reader.readAsText(file);
 }
 
@@ -3394,6 +3511,22 @@ function renderAdminSettings(){
           ${IMPORTANCES.map(i=>`<option value="${i}" ${s.defaultImportance===i?'selected':''}>${i}</option>`).join('')}
         </select>
         <div style="font-size:10.5px;color:var(--text-muted);margin-top:3px">Valeur pré-remplie lors d'un ajout</div>
+      </div>
+      <div class="form-group">
+        <label>Sauvegarde automatique</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:4px;padding:7px 9px;background:var(--surface3);border:1px solid var(--border);border-radius:var(--r)">
+          <input type="checkbox" id="set-autosave" ${s.autoSave?.enabled?'checked':''} style="accent-color:var(--accent);width:14px;height:14px">
+          <span style="font-size:12px;font-weight:500">${s.autoSave?.enabled?'<span style="color:var(--green)">Activée</span>':'<span style="color:var(--text-muted)">Désactivée</span>'}</span>
+        </label>
+        <div style="font-size:10.5px;color:var(--text-muted);margin-top:3px">Sauvegarde automatiquement les fichiers modifiés</div>
+      </div>
+      <div class="form-group">
+        <label>Intervalle de sauvegarde auto</label>
+        <select id="set-autosave-interval">
+          ${[1,2,5,10,15,30].map(n=>`<option value="${n}" ${(s.autoSave?.intervalMinutes||5)===n?'selected':''}>${n} minute${n>1?'s':''}</option>`).join('')}
+        </select>
+        <div style="font-size:10.5px;color:var(--text-muted);margin-top:3px">Durée entre chaque sauvegarde automatique${s.autoSave?.enabled?` — <span style="color:var(--green)">active</span>`:''}
+        </div>
       </div>
     </div>
     <div style="margin-top:14px">
@@ -3475,21 +3608,19 @@ function applyTheme(themeId){
 function saveSettings(){
   const h=parseInt(document.getElementById('set-horizon').value)||180;
   const di=document.getElementById('set-defimp').value;
-  ADMIN.settings.alertHorizon=h;ADMIN.settings.defaultImportance=di;
-  saveAdminConfig();notify('✓ Paramètres enregistrés');
+  const asEnabled=document.getElementById('set-autosave')?.checked||false;
+  const asInterval=parseInt(document.getElementById('set-autosave-interval')?.value)||5;
+  ADMIN.settings.alertHorizon=h;
+  ADMIN.settings.defaultImportance=di;
+  if(!ADMIN.settings.autoSave) ADMIN.settings.autoSave={};
+  ADMIN.settings.autoSave.enabled=asEnabled;
+  ADMIN.settings.autoSave.intervalMinutes=asInterval;
+  saveAdminConfig();
+  // Redémarrer le timer de sauvegarde automatique si nécessaire
+  if(asEnabled) startAutoSave(); else stopAutoSave();
+  notify('✓ Paramètres enregistrés' + (asEnabled ? ` — autosauvegarde toutes les ${asInterval} min` : ''));
 }
 
-async function forgetOneFile(which){
-  await idbDel(which+'_buf');
-  localStorage.removeItem('grh_file_'+which);
-  if(which==='paye'){wbPaye=null;fileHandlePaye=null;}
-  else{wbTdb=null;fileHandleTdb=null;}
-  const b=document.getElementById('fb-'+which);if(b)b.classList.remove('loaded');
-  const l=document.getElementById('fb-'+which+'-label');if(l)l.textContent=which==='paye'?'Cahier de Paye…':'Tableau de Bord…';
-  const sb=document.getElementById('save-all-btn');if(sb&&!wbPaye&&!wbTdb)sb.disabled=true;
-  notify('✓ Fichier '+which+' effacé de la mémoire');
-  setAdminTab('settings');
-}
 
 function resetAllAdmin(){
   if(!confirm('Réinitialiser TOUTE la configuration d\'administration ? Les colonnes custom, templates et paramètres seront effacés.'))return;
@@ -3613,6 +3744,8 @@ function notify(msg){const el=document.getElementById('notify');document.getElem
 updateBadges();
 // 4. Appliquer l'ordre de navigation sauvegardé
 applyNavOrder();
+// 5. Démarrer la sauvegarde automatique si elle était activée
+startAutoSave();
 tryAutoReload();
 </script>
 </body>
