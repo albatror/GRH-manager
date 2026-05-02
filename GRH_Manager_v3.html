@@ -361,7 +361,7 @@ const IMPORTANCES=['Normal','Moyenne','Haute','Urgente'];
 // ═══════════════════════════════════════════════════════════
 function loadAdminConfig() {
   try { return JSON.parse(localStorage.getItem('grh_admin_config')||'null')||defaultAdminConfig(); }
-  catch(e) { return defaultAdminConfig(); }
+  catch { return defaultAdminConfig(); }
 }
 function saveAdminConfig() {
   localStorage.setItem('grh_admin_config', JSON.stringify(ADMIN));
@@ -721,13 +721,6 @@ function getDataKeys(tableKey){
   return ordered;
 }
 
-function getEffectiveCols(tableKey){
-  const base=tableKey==='paye_'?[...PAYE_COLS_BASE]:tableKey==='paye_N1'?[...N1_COLS]:TDB_MAP_BASE[tableKey]?[...TDB_MAP_BASE[tableKey].cols]:[];
-  const custom=(ADMIN.customCols[tableKey]||[]).map(c=>c.key);
-  if(ADMIN.importanceEnabled[tableKey]) base.push('_importance');
-  return [...base,...custom];
-}
-
 function getCustomColDefs(tableKey){
   const defs=[];
   if(ADMIN.importanceEnabled[tableKey]) defs.push({key:'_importance',label:'Importance',type:'select',options:IMPORTANCES,isImportance:true});
@@ -840,30 +833,6 @@ function isoToDisplay(iso) {
 
 // ─── DÉTECTION DES COLONNES DATE ──────────────────────────
 // Construire un set des indices de style qui sont des dates dans un workbook
-function buildDateStyleSet(wb) {
-  // SheetJS expose les styles via wb.SSF et les cellules via cell.s (index de style)
-  // On utilise aussi une heuristique sur le nom de colonne
-  const STD_DATE_FMTIDS = new Set([14,15,16,17,18,19,20,21,22,45,46,47]);
-  const dateStyleIndices = new Set();
-
-  // Récupérer les styles depuis wb.Styles si disponible
-  if(wb.Styles && wb.Styles.Formats) {
-    try {
-      const fmts = wb.Styles.Formats; // {numFmtId: formatCode}
-      if(wb.SSF) {
-        // Chercher dans wb.SSF les formats date
-        Object.entries(wb.SSF).forEach(([id,fmt]) => {
-          const fmtId = parseInt(id);
-          if(STD_DATE_FMTIDS.has(fmtId) || (fmt && /[dy]/i.test(fmt) && !/^[h:ms aAp\/\\.,"]+$/.test(fmt))) {
-            dateStyleIndices.add(fmtId);
-          }
-        });
-      }
-    } catch(e) {}
-  }
-
-  return dateStyleIndices;
-}
 
 // Noms de colonnes qui contiennent des dates (heuristique fiable)
 function isDateCol(colKey) {
@@ -1075,8 +1044,6 @@ const HEADER_ALIASES = {
   maitre:           ['maitreDapprentissage','maitre'],
   maNbi:            ['maavecnbioui','manbi','maavecnbioui/non'],
   changements:      ['changementsDeremuner','changements'],
-  codeGestion:      ['codegestion'],
-
   // ── CDI ──────────────────────────────────────────────────
   dateDebutCdi:     ['datededebutdecdi','datedebutdecdi','datedebutcdi'],
   echeance3ans:     ['echeancetriennale3ans','echeance3ans','echeance3'],
@@ -1158,7 +1125,6 @@ function resolveHeader(headerValue) {
 // 4. Aucune donnée n'est jamais ignorée
 function sheetToRecords(ws, colKeys, tableKey, dataFirstRow) {
   if(!ws) return [];
-  const firstDataRow = (dataFirstRow !== undefined ? dataFirstRow : 1);
   const raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:true, cellDates:false});
 
   // Trouver la vraie ligne d'en-tête : la première ligne non-vide dans raw
@@ -1367,7 +1333,7 @@ function loadDynamicSheet(wb, sheetName, fileKey){
       return;
     }
   }
-  for(const [viewId, vm] of Object.entries(VIEW_MAP)) {
+  for(const vm of Object.values(VIEW_MAP)) {
     if(vm.sheetName && sheetsMatch(vm.sheetName, sheetName)) {
       const ws = wb.Sheets[sheetName];
       if(ws) DB[vm.dbKey()] = sheetToRecords(ws, [], vm.dbKey(), 1);
@@ -1518,9 +1484,9 @@ function _rebuildDynSchema(viewId, tableKey, sheetName, ws){
 // ─── IDB ──────────────────────────────────────────────────
 const IDB_NAME='grh_manager_v2', IDB_STORE='files';
 function openIDB(){return new Promise((res,rej)=>{const r=indexedDB.open(IDB_NAME,1);r.onupgradeneeded=e=>e.target.result.createObjectStore(IDB_STORE);r.onsuccess=e=>res(e.target.result);r.onerror=e=>rej(e.target.error);});}
-async function idbSet(key,val){try{const db=await openIDB();return new Promise((res,rej)=>{const tx=db.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).put(val,key);tx.oncomplete=()=>res();tx.onerror=e=>rej(e.target.error);});}catch(e){}}
-async function idbGet(key){try{const db=await openIDB();return new Promise((res,rej)=>{const tx=db.transaction(IDB_STORE,'readonly');const r=tx.objectStore(IDB_STORE).get(key);r.onsuccess=()=>res(r.result);r.onerror=e=>rej(e.target.error);});}catch(e){return null;}}
-async function idbDel(key){try{const db=await openIDB();return new Promise(res=>{const tx=db.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).delete(key);tx.oncomplete=()=>res();});}catch(e){}}
+async function idbSet(key,val){try{const db=await openIDB();return new Promise((res,rej)=>{const tx=db.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).put(val,key);tx.oncomplete=()=>res();tx.onerror=e=>rej(e.target.error);});}catch{}}
+async function idbGet(key){try{const db=await openIDB();return new Promise((res,rej)=>{const tx=db.transaction(IDB_STORE,'readonly');const r=tx.objectStore(IDB_STORE).get(key);r.onsuccess=()=>res(r.result);r.onerror=e=>rej(e.target.error);});}catch{return null;}}
+async function idbDel(key){try{const db=await openIDB();return new Promise(res=>{const tx=db.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).delete(key);tx.oncomplete=()=>res();});}catch{}}
 
 // ─── VARIABLES FICHIERS ────────────────────────────────────
 let fileNamePaye=null, fileNameTdb=null;
@@ -2139,7 +2105,7 @@ function renderDashboard(){
 
   // KPIs
   const kpiOrder=ADMIN.dashConfig.kpiOrder||Object.keys(KPI_DEFS);
-  let kpiHtml=kpiOrder.map(k=>{
+  const kpiHtml=kpiOrder.map(k=>{
     const d=KPI_DEFS[k];if(!d)return'';
     const db=typeof d.db==='function'?d.db():d.db;
     const label=typeof d.label==='function'?d.label():d.label;
@@ -2347,7 +2313,7 @@ function renderCell(col, val, headerLabel){
         const cls = diff<0?'color:var(--red)':diff<60?'color:var(--orange)':'';
         return `<span style="font-family:var(--mono);font-size:10.5px;${cls}">${isoToDisplay(iso)}</span>`;
       }
-    }catch(e){}
+    }catch{}
     return `<span style="font-family:var(--mono);font-size:10.5px">${isoToDisplay(iso)||s}</span>`;
   }
 
@@ -2458,23 +2424,6 @@ function renderForm(schema,data){
   }</div>`).join('')}</div>`;
 }
 
-function saveModal(){
-  const vm=VIEW_MAP[currentView];if(!vm)return;
-  const schema=getSchema(vm.schema);const data=DB[vm.dbKey()];
-  const obj={};schema.fields.forEach(f=>{const el=document.getElementById('f_'+f.key);if(el)obj[f.key]=el.value;});
-  if(editingId){const idx=data.findIndex(r=>r.id===editingId);if(idx>=0)data[idx]={...data[idx],...obj};}
-  else{obj.id=nextId++;data.push(obj);}
-  closeModal();const tb=document.getElementById('table-body');if(tb)tb.innerHTML=renderRows(vm,schema);
-  updateBadges();markDirty(vm.file);notify(editingId?'✓ Modifié':'✓ Ajouté');
-}
-
-function deleteRow(id){
-  if(!confirm('Supprimer ?'))return;
-  const vm=VIEW_MAP[currentView];if(!vm)return;
-  const data=DB[vm.dbKey()];const idx=data.findIndex(r=>r.id===id);if(idx>=0)data.splice(idx,1);
-  const tb=document.getElementById('table-body');if(tb)tb.innerHTML=renderRows(vm,getSchema(vm.schema));
-  updateBadges();markDirty(vm.file);notify('🗑 Supprimé');
-}
 
 // ═══════════════════════════════════════════════════════════
 // PARAMÉTRAGE PAYE
@@ -2713,7 +2662,7 @@ function navDrop(e){
   applyNavOrder();
   setAdminTab('navigation');
 }
-function navDragEnd(e){
+function navDragEnd(){
   if(_navDragSrc) _navDragSrc.style.opacity = '';
   document.querySelectorAll('.nav-order-item').forEach(el => {
     el.style.borderColor = '';
@@ -3196,7 +3145,7 @@ function renderAdminDashboard(){
   <div class="admin-section">
     <div class="admin-section-title">Ordre des KPI (glisser-déposer)</div>
     <div id="kpi-sort-list" style="display:flex;flex-wrap:wrap;gap:8px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r)">
-      ${kpiOrder.map((k,i)=>{const d=KPI_DEFS[k];if(!d)return'';return`<div class="col-tag" draggable="true" data-kpi="${k}" ondragstart="kpiDragStart(event)" ondragover="event.preventDefault()" ondrop="kpiDrop(event,'${k}')">⠿ ${typeof d.label==='function'?d.label():d.label}</div>`}).join('')}
+      ${kpiOrder.map(k=>{const d=KPI_DEFS[k];if(!d)return'';return`<div class="col-tag" draggable="true" data-kpi="${k}" ondragstart="kpiDragStart(event)" ondragover="event.preventDefault()" ondrop="kpiDrop(event,'${k}')">⠿ ${typeof d.label==='function'?d.label():d.label}</div>`}).join('')}
     </div>
   </div>
   <div class="admin-section">
@@ -3416,7 +3365,7 @@ function importConfig(event){
         Object.assign(ADMIN,imported);
       }
       saveAdminConfig();notify('✓ Configuration importée');setAdminTab('templates');
-    }catch(ex){notify('⚠ Fichier JSON invalide');}
+    }catch{notify('⚠ Fichier JSON invalide');}
   };reader.readAsText(file);
 }
 
@@ -3582,17 +3531,6 @@ function saveSettings(){
   notify('✓ Paramètres enregistrés' + (asEnabled ? ` — autosauvegarde toutes les ${asInterval} min` : ''));
 }
 
-async function forgetOneFile(which){
-  await idbDel(which+'_buf');
-  localStorage.removeItem('grh_file_'+which);
-  if(which==='paye'){wbPaye=null;fileHandlePaye=null;}
-  else{wbTdb=null;fileHandleTdb=null;}
-  const b=document.getElementById('fb-'+which);if(b)b.classList.remove('loaded');
-  const l=document.getElementById('fb-'+which+'-label');if(l)l.textContent=which==='paye'?'Cahier de Paye…':'Tableau de Bord…';
-  const sb=document.getElementById('save-all-btn');if(sb&&!wbPaye&&!wbTdb)sb.disabled=true;
-  notify('✓ Fichier '+which+' effacé de la mémoire');
-  setAdminTab('settings');
-}
 
 function resetAllAdmin(){
   if(!confirm('Réinitialiser TOUTE la configuration d\'administration ? Les colonnes custom, templates et paramètres seront effacés.'))return;
