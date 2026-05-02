@@ -387,16 +387,33 @@ function defaultAdminConfig() {
     },
     // Config dashboard
     dashConfig: {
-      kpiOrder: ['dispo','cdd','stagiaires','apprentis','at','mater','tpartiel','paye'],
+      kpiOrder: ['paye','n1','cdd','cnp','stagiaires','apprentis','experts','dispo','detach-sort','detach-entr','mater','parental','indispo','tpartiel','sejour','tpt','at','cdi','stag-conv','comite-med','retraite','agent60'],
       widgets: [
-        {id:'alerts',    enabled:true,  cols:2, title:'Alertes & Dates butoir'},
-        {id:'poleStats', enabled:true,  cols:1, title:'Dispos par pôle'},
-        {id:'srcStats',  enabled:true,  cols:1, title:'Alertes par source'},
-        {id:'recentPaye',enabled:false, cols:2, title:'Derniers mouvements paye', count:10, filterImp:''},
-        {id:'recentCdd', enabled:false, cols:1, title:'Derniers CDD', count:5, filterImp:''},
-        {id:'recentDispo',enabled:false,cols:1, title:'Dernières dispos', count:5, filterImp:''},
-        {id:'recentAt',  enabled:false, cols:1, title:'Derniers AT', count:5, filterImp:''},
-        {id:'recentMater',enabled:false,cols:1, title:'Dernières maternités', count:5, filterImp:''},
+        {id:'alerts',         enabled:true,  cols:2, title:'Alertes & Dates butoir'},
+        {id:'poleStats',      enabled:true,  cols:1, title:'Dispos par pôle'},
+        {id:'srcStats',       enabled:true,  cols:1, title:'Alertes par source'},
+        {id:'recentPaye',     enabled:false, cols:2, title:'Derniers mouvements paye',       count:10, filterImp:'', visibleCols:['pole','matricule','nom','prenom']},
+        {id:'recentN1',       enabled:false, cols:1, title:'Derniers mvts N+1',              count:5,  filterImp:''},
+        {id:'recentCdd',      enabled:false, cols:1, title:'Derniers CDD',                   count:5,  filterImp:''},
+        {id:'recentCnp',      enabled:false, cols:1, title:'Derniers CNP',                   count:5,  filterImp:''},
+        {id:'recentStagiaires',enabled:false,cols:1, title:'Derniers stagiaires',            count:5,  filterImp:''},
+        {id:'recentApprentis',enabled:false, cols:1, title:'Derniers apprentis',             count:5,  filterImp:''},
+        {id:'recentExperts',  enabled:false, cols:1, title:'Derniers experts',               count:5,  filterImp:''},
+        {id:'recentDispo',    enabled:false, cols:1, title:'Dernières dispos',               count:5,  filterImp:''},
+        {id:'recentDetachSort',enabled:false,cols:1, title:'Derniers détach. sortants',      count:5,  filterImp:''},
+        {id:'recentDetachEntr',enabled:false,cols:1, title:'Derniers détach. entrants',      count:5,  filterImp:''},
+        {id:'recentMater',    enabled:false, cols:1, title:'Dernières maternités',           count:5,  filterImp:''},
+        {id:'recentParental', enabled:false, cols:1, title:'Derniers congés parentaux',      count:5,  filterImp:''},
+        {id:'recentIndispo',  enabled:false, cols:1, title:'Dernières indispos phys.',       count:5,  filterImp:''},
+        {id:'recentTpartiel', enabled:false, cols:1, title:'Derniers temps partiels',        count:5,  filterImp:''},
+        {id:'recentSejour',   enabled:false, cols:1, title:'Dernières cartes séjour',        count:5,  filterImp:''},
+        {id:'recentTpt',      enabled:false, cols:1, title:'Derniers T. partiels thér.',     count:5,  filterImp:''},
+        {id:'recentAt',       enabled:false, cols:1, title:'Derniers AT',                    count:5,  filterImp:''},
+        {id:'recentCdi',      enabled:false, cols:1, title:'Derniers CDI',                   count:5,  filterImp:''},
+        {id:'recentStagConv', enabled:false, cols:1, title:'Derniers stag. conventionnés',   count:5,  filterImp:''},
+        {id:'recentComiteMed',enabled:false, cols:1, title:'Derniers comité médical',        count:5,  filterImp:''},
+        {id:'recentRetraite', enabled:false, cols:1, title:'Dernières retraites',            count:5,  filterImp:''},
+        {id:'recentAgent60',  enabled:false, cols:1, title:'Derniers agents > 60 ans',       count:5,  filterImp:''},
       ]
     },
     // Templates sauvegardés
@@ -415,6 +432,20 @@ function defaultAdminConfig() {
 }
 
 let ADMIN = loadAdminConfig();
+
+// Migrate stored config: add any missing KPI keys and widgets from defaults
+(function migrateAdminConfig(){
+  const def=defaultAdminConfig();
+  // Ensure kpiOrder contains all keys defined in defaults
+  if(!ADMIN.dashConfig) ADMIN.dashConfig=def.dashConfig;
+  def.dashConfig.kpiOrder.forEach(k=>{if(!ADMIN.dashConfig.kpiOrder.includes(k))ADMIN.dashConfig.kpiOrder.push(k);});
+  // Ensure all default widgets are present
+  def.dashConfig.widgets.forEach(dw=>{
+    const exists=ADMIN.dashConfig.widgets.find(w=>w.id===dw.id);
+    if(!exists) ADMIN.dashConfig.widgets.push({...dw});
+    else if(dw.id==='recentPaye'&&exists.visibleCols===undefined) exists.visibleCols=dw.visibleCols;
+  });
+})();
 
 // ═══════════════════════════════════════════════════════════
 // SCHEMAS DYNAMIQUES
@@ -2080,14 +2111,28 @@ function collectAllAlerts(today){
 }
 
 const KPI_DEFS={
-  dispo:{label:'Disponibilités',db:'tdb_dispo',color:'blue',sub:'agents hors organisme'},
-  cdd:{label:'CDD',db:'tdb_cdd',color:'orange',sub:'contrats en cours'},
-  stagiaires:{label:'Stagiaires',db:'tdb_stagiaires',color:'green',sub:'en cours'},
-  apprentis:{label:'Apprentis',db:'tdb_apprentis',color:'purple',sub:'en cours'},
-  at:{label:'Accidents travail',db:'tdb_at',color:'red',sub:'dossiers'},
-  mater:{label:'Maternités',db:'tdb_mater',color:'yellow',sub:'en cours'},
-  tpartiel:{label:'Temps partiels',db:'tdb_tpartiel',color:'blue',sub:'en cours'},
-  paye:{label:()=>'Paye '+currentMonth,db:()=>'paye_'+currentMonth,color:'green',sub:'mouvements'},
+  paye:         {label:()=>'Paye '+currentMonth,  db:()=>'paye_'+currentMonth, color:'green',  sub:'mouvements'},
+  n1:           {label:'Report N+1',              db:'paye_N1',                color:'green',  sub:'mouvements'},
+  cdd:          {label:'CDD',                     db:'tdb_cdd',                color:'orange', sub:'contrats en cours'},
+  cnp:          {label:'CNP',                     db:'tdb_cnp',                color:'orange', sub:'contrats'},
+  stagiaires:   {label:'Stagiaires',              db:'tdb_stagiaires',         color:'green',  sub:'en cours'},
+  apprentis:    {label:'Apprentis',               db:'tdb_apprentis',          color:'purple', sub:'en cours'},
+  experts:      {label:'Experts',                 db:'tdb_experts',            color:'blue',   sub:'en position'},
+  dispo:        {label:'Disponibilités',          db:'tdb_dispo',              color:'blue',   sub:'hors organisme'},
+  'detach-sort':{label:'Détach. sortants',        db:'tdb_detach_sort',        color:'blue',   sub:'agents'},
+  'detach-entr':{label:'Détach. entrants',        db:'tdb_detach_entr',        color:'blue',   sub:'agents'},
+  mater:        {label:'Maternités',              db:'tdb_mater',              color:'yellow', sub:'en cours'},
+  parental:     {label:'Congé parental',          db:'tdb_parental',           color:'purple', sub:'en cours'},
+  indispo:      {label:'Indispo. phys.',          db:'tdb_indispo',            color:'red',    sub:'agents'},
+  tpartiel:     {label:'Temps partiels',          db:'tdb_tpartiel',           color:'blue',   sub:'en cours'},
+  sejour:       {label:'Cartes séjour',           db:'tdb_sejour',             color:'orange', sub:'en cours'},
+  tpt:          {label:'T. partiel thér.',        db:'tdb_tpt',                color:'gray',   sub:'en cours'},
+  at:           {label:'Accidents travail',       db:'tdb_at',                 color:'red',    sub:'dossiers'},
+  cdi:          {label:'CDI',                     db:'tdb_cdi',                color:'green',  sub:'contrats'},
+  'stag-conv':  {label:'Stag. conv.',             db:'tdb_stag_conv',          color:'green',  sub:'en cours'},
+  'comite-med': {label:'Comité méd.',             db:'tdb_comite_med',         color:'red',    sub:'dossiers'},
+  retraite:     {label:'Retraite',                db:'tdb_retraite',           color:'gray',   sub:'agents'},
+  agent60:      {label:'Agents > 60 ans',         db:'tdb_agent60',            color:'yellow', sub:'agents'},
 };
 
 function renderDashboard(){
@@ -2110,7 +2155,7 @@ function renderDashboard(){
     const db=typeof d.db==='function'?d.db():d.db;
     const label=typeof d.label==='function'?d.label():d.label;
     const n=(DB[db]||[]).length;
-    return`<div class="kpi-card ${d.color}" onclick="setView('${k==='paye'?'paye':k}',document.querySelector('[data-view=\\'${k==='paye'?'paye':k}\\']'))"><div class="kpi-label">${label}</div><div class="kpi-value">${n}</div><div class="kpi-sub">${d.sub}</div></div>`;
+    return`<div class="kpi-card ${d.color}" onclick="setView('${k}',document.querySelector('[data-view=\\'${k}\\']'))"><div class="kpi-label">${label}</div><div class="kpi-value">${n}</div><div class="kpi-sub">${d.sub}</div></div>`;
   }).join('');
 
   // Widgets
@@ -2160,27 +2205,52 @@ function renderWidget(w,allAlerts,nExp,nCrit,nWarn,nSoon,srcTags,srcE,maxSrc,pol
         srcE.map(([s,n])=>`<div class="stat-row"><span class="chip ${srcTags[s]||'chip-gray'}" style="font-size:9px;min-width:85px;text-align:center">${s}</span><div class="stat-bar-wrap"><div class="stat-bar" style="width:${Math.round(n/maxSrc*100)}%"></div></div><div class="stat-val">${n}</div></div>`).join('')}
     </div>`;
   }
-  // Recent records widgets
-  const recentMap={recentPaye:'paye_'+currentMonth,recentCdd:'tdb_cdd',recentDispo:'tdb_dispo',recentAt:'tdb_at',recentMater:'tdb_mater'};
-  const viewMap2={recentPaye:'paye',recentCdd:'cdd',recentDispo:'dispo',recentAt:'at',recentMater:'mater'};
-  const schemaMap={recentPaye:'paye',recentCdd:'cdd',recentDispo:'dispo',recentAt:'at',recentMater:'mater'};
-  if(recentMap[w.id]){
-    let data=[...(DB[recentMap[w.id]]||[])];
+  // Recent records widgets — unified map: id → {db, view, schema}
+  const RECENT_CFG={
+    recentPaye:     {db:()=>'paye_'+currentMonth, view:'paye',        schema:'paye'},
+    recentN1:       {db:'paye_N1',                view:'n1',          schema:'paye'},
+    recentCdd:      {db:'tdb_cdd',                view:'cdd',         schema:'cdd'},
+    recentCnp:      {db:'tdb_cnp',                view:'cnp',         schema:'cnp'},
+    recentStagiaires:{db:'tdb_stagiaires',         view:'stagiaires',  schema:'stagiaires'},
+    recentApprentis:{db:'tdb_apprentis',           view:'apprentis',   schema:'apprentis'},
+    recentExperts:  {db:'tdb_experts',             view:'experts',     schema:'experts'},
+    recentDispo:    {db:'tdb_dispo',               view:'dispo',       schema:'dispo'},
+    recentDetachSort:{db:'tdb_detach_sort',        view:'detach-sort', schema:'detach_sort'},
+    recentDetachEntr:{db:'tdb_detach_entr',        view:'detach-entr', schema:'detach_entr'},
+    recentMater:    {db:'tdb_mater',               view:'mater',       schema:'mater'},
+    recentParental: {db:'tdb_parental',            view:'parental',    schema:'parental'},
+    recentIndispo:  {db:'tdb_indispo',             view:'indispo',     schema:'indispo'},
+    recentTpartiel: {db:'tdb_tpartiel',            view:'tpartiel',    schema:'tpartiel'},
+    recentSejour:   {db:'tdb_sejour',              view:'sejour',      schema:'sejour'},
+    recentTpt:      {db:'tdb_tpt',                 view:'tpt',         schema:'tpt'},
+    recentAt:       {db:'tdb_at',                  view:'at',          schema:'at'},
+    recentCdi:      {db:'tdb_cdi',                 view:'cdi',         schema:'cdi'},
+    recentStagConv: {db:'tdb_stag_conv',           view:'stag-conv',   schema:'stag_conv'},
+    recentComiteMed:{db:'tdb_comite_med',          view:'comite-med',  schema:'comite_med'},
+    recentRetraite: {db:'tdb_retraite',            view:'retraite',    schema:'retraite'},
+    recentAgent60:  {db:'tdb_agent60',             view:'agent60',     schema:'agent60'},
+  };
+  const rcfg=RECENT_CFG[w.id];
+  if(rcfg){
+    const dbKey=typeof rcfg.db==='function'?rcfg.db():rcfg.db;
+    let data=[...(DB[dbKey]||[])];
     if(w.filterImp)data=data.filter(r=>r._importance===w.filterImp);
     data=data.slice(-Math.min(w.count||5,data.length)).reverse();
-    const schema=SCHEMAS_BASE[schemaMap[w.id]];
-    const dispCols=(schema?schema.cols.slice(0,4):[]);
-    const impEnabled=ADMIN.importanceEnabled[viewToTableKey(schemaMap[w.id])];
+    const schema=SCHEMAS_BASE[rcfg.schema];
+    const dispCols=w.id==='recentPaye'
+      ?(w.visibleCols&&w.visibleCols.length?w.visibleCols:schema?schema.cols.slice(0,4):[])
+      :(schema?schema.cols.slice(0,4):[]);
+    const impEnabled=ADMIN.importanceEnabled[viewToTableKey(rcfg.schema)];
     return`<div class="dash-card">
       <div class="dash-card-title">${w.title}
         <span style="margin-left:auto;font-size:10px;color:var(--text-dim);font-weight:400">${data.length} entrée${data.length!==1?'s':''}</span>
-        <span style="cursor:pointer;font-size:11px;color:var(--accent)" onclick="setView('${viewMap2[w.id]}',document.querySelector('[data-view=\\'${viewMap2[w.id]}\\']'))">→ Voir tout</span>
+        <span style="cursor:pointer;font-size:11px;color:var(--accent)" onclick="setView('${rcfg.view}',document.querySelector('[data-view=\\'${rcfg.view}\\']'))">→ Voir tout</span>
       </div>
       ${data.length===0?`<div style="color:var(--text-muted);font-size:11px;padding:8px 0">Aucune donnée${w.filterImp?' pour importance "'+w.filterImp+'"':''}</div>`:`
       <div style="overflow-x:auto">
         <table class="recent-table">
-          <thead><tr>${impEnabled?'<th>Imp.</th>':''} ${dispCols.map(c=>{const f=schema.fields.find(f=>f.key===c);return`<th>${f?f.label:c}</th>`}).join('')}</tr></thead>
-          <tbody>${data.map(r=>`<tr onclick="goToRecord('${viewMap2[w.id]}',${r.id})" style="cursor:pointer">${impEnabled?`<td>${renderImpChip(r._importance)}</td>`:''} ${dispCols.map(c=>`<td title="${r[c]||''}">${renderCell(c,r[c])}</td>`).join('')}</tr>`).join('')}</tbody>
+          <thead><tr>${impEnabled?'<th>Imp.</th>':''} ${dispCols.map(c=>{const f=schema&&schema.fields.find(f=>f.key===c);return`<th>${f?f.label:c}</th>`}).join('')}</tr></thead>
+          <tbody>${data.map(r=>`<tr onclick="goToRecord('${rcfg.view}',${r.id})" style="cursor:pointer">${impEnabled?`<td>${renderImpChip(r._importance)}</td>`:''} ${dispCols.map(c=>`<td title="${r[c]||''}">${renderCell(c,r[c])}</td>`).join('')}</tr>`).join('')}</tbody>
         </table>
       </div>`}
     </div>`;
@@ -3163,14 +3233,30 @@ function renderAdminDashboard(){
 }
 
 function renderWidgetEditor(w){
-  const recentMap={recentPaye:'Cahier de paye',recentCdd:'CDD',recentDispo:'Disponibilités',recentAt:'Accidents travail',recentMater:'Maternité'};
-  const isRecent=!!recentMap[w.id];
+  const recentLabels={
+    recentPaye:'Cahier de paye',recentN1:'Report N+1',recentCdd:'CDD',recentCnp:'CNP',
+    recentStagiaires:'Stagiaires',recentApprentis:'Apprentis',recentExperts:'Experts',
+    recentDispo:'Disponibilités',recentDetachSort:'Détach. sortants',recentDetachEntr:'Détach. entrants',
+    recentMater:'Maternité',recentParental:'Congé parental',recentIndispo:'Indispo phys.',
+    recentTpartiel:'Temps partiel',recentSejour:'Cartes séjour',recentTpt:'T. partiel thér.',
+    recentAt:'Accidents travail',recentCdi:'CDI',recentStagConv:'Stag. conv.',
+    recentComiteMed:'Comité médical',recentRetraite:'Retraite',recentAgent60:'Agents > 60 ans',
+  };
+  const isRecent=!!recentLabels[w.id];
+  const isPayeRecent=(w.id==='recentPaye');
+  const payeFields=isPayeRecent?(SCHEMAS_BASE.paye?SCHEMAS_BASE.paye.fields:[]):[];
+  const curCols=w.visibleCols||['pole','matricule','nom','prenom'];
   return`<div class="widget-item" draggable="true" data-widget="${w.id}">
   <span class="widget-move">⠿</span>
   <input type="checkbox" id="w-en-${w.id}" ${w.enabled?'checked':''}>
   <div style="flex:1">
     <div style="font-size:12.5px;font-weight:500">${w.title}</div>
-    ${isRecent?`<div style="font-size:11px;color:var(--text-muted);margin-top:3px">${recentMap[w.id]}</div>`:''}
+    ${isRecent?`<div style="font-size:11px;color:var(--text-muted);margin-top:3px">${recentLabels[w.id]}</div>`:''}
+    ${isPayeRecent?`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:5px">
+      ${payeFields.filter(f=>f.key!=='remarques').map(f=>`<label style="display:flex;align-items:center;gap:3px;font-size:10.5px;cursor:pointer;white-space:nowrap">
+        <input type="checkbox" data-wcol="${w.id}" value="${f.key}" ${curCols.includes(f.key)?'checked':''} style="accent-color:var(--purple);width:12px;height:12px">${f.label}
+      </label>`).join('')}
+    </div>`:''}
   </div>
   <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
     <div style="font-size:10.5px;color:var(--text-muted)">Largeur:</div>
@@ -3197,6 +3283,10 @@ function applyDashConfig(){
     const cols=document.getElementById('w-cols-'+w.id);if(cols)w.cols=parseInt(cols.value);
     const cnt=document.getElementById('w-cnt-'+w.id);if(cnt)w.count=parseInt(cnt.value);
     const imp=document.getElementById('w-imp-'+w.id);if(imp)w.filterImp=imp.value;
+    if(w.id==='recentPaye'){
+      const checked=[...document.querySelectorAll(`[data-wcol="${w.id}"]:checked`)].map(el=>el.value);
+      w.visibleCols=checked.length?checked:['pole','matricule','nom','prenom'];
+    }
   });
   saveAdminConfig();notify('✓ Dashboard mis à jour');
   // Re-render dashboard if active
