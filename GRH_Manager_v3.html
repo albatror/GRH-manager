@@ -236,6 +236,8 @@ tbody td:first-child{font-family:var(--mono);font-size:10.5px;color:var(--text-m
 /* notify */
 #notify{position:fixed;bottom:20px;right:20px;z-index:300;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:10px 15px;font-size:12.5px;display:none;align-items:center;gap:8px;box-shadow:0 4px 20px rgba(0,0,0,.4)}
 #notify.show{display:flex}
+#dirty-indicator{display:none;align-items:center;gap:5px;padding:3px 8px;border-radius:var(--r);background:var(--orange-soft);border:1px solid rgba(247,148,58,.3);font-size:10px;color:var(--orange);font-weight:600}
+#autosave-status{display:none;align-items:center;gap:5px;padding:3px 8px;border-radius:var(--r);background:var(--green-soft);border:1px solid rgba(46,204,122,.25);font-size:10px;color:var(--green)}
 .empty-state{padding:50px;text-align:center;color:var(--text-muted)}
 .empty-state .es-icon{font-size:32px;margin-bottom:8px;opacity:.35}
 
@@ -263,6 +265,8 @@ tbody td:first-child{font-family:var(--mono);font-size:10.5px;color:var(--text-m
         <div class="file-dot"></div><span id="fb-tdb-label">Tableau de Bord…</span>
       </div>
       <button class="save-btn" id="save-all-btn" onclick="saveAllFiles()" disabled>💾 Enregistrer</button>
+      <div id="dirty-indicator"><span>●</span><span>Modifications non sauvegardées</span></div>
+      <div id="autosave-status"><span>⏱</span><span id="autosave-status-text">Autosauvegarde active</span></div>
     </div>
     <div id="sb-nav">
       <div class="nav-group">
@@ -401,7 +405,11 @@ function defaultAdminConfig() {
     settings: {
       alertHorizon: 180,
       defaultImportance: 'Normal',
-      dateFormat: 'fr'
+      dateFormat: 'fr',
+      autoSave: {
+        enabled: false,
+        intervalMinutes: 5
+      }
     }
   };
 }
@@ -765,6 +773,10 @@ let editingId=null, searchQuery='', filterPole='', filterImp='';
 let sortCol=null, sortDir=1, alertFilter='all', adminTab='columns';
 let wbPaye=null, wbTdb=null;
 let dirtyPaye=false, dirtyTdb=false;
+// Cache des alertes — invalidé à chaque modification
+let _alertsCache=null, _alertsCacheDate=null;
+// Timer de sauvegarde automatique
+let _autoSaveTimer=null;
 
 // ═══════════════════════════════════════════════════════════
 // EXCEL READ/WRITE
@@ -1244,7 +1256,9 @@ function sheetToRecords(ws, colKeys, tableKey, dataFirstRow) {
 
       if(looksLikeDate && v !== '') {
         const converted = excelDateToISO(v);
-        obj[key] = converted || String(v).trim();
+        // Si la conversion échoue, stocker '' plutôt que la valeur brute
+        // pour éviter de propager des dates invalides dans les calculs d'alertes
+        obj[key] = converted;
       } else {
         const s = String(v).trim();
         // Nettoyer les dates JS mal converties
@@ -1265,6 +1279,11 @@ function sheetToRecords(ws, colKeys, tableKey, dataFirstRow) {
 
 function loadPayeWorkbook(wb){
   wbPaye = wb;
+  // Vérifier les onglets mensuels manquants
+  const missingMonths = MONTHS.filter(m => !wb.Sheets[m]);
+  if(missingMonths.length > 0 && missingMonths.length < MONTHS.length) {
+    notify('⚠ Onglets manquants dans Cahier de Paye : ' + missingMonths.join(', '));
+  }
   // Onglets mensuels connus
   MONTHS.forEach(m => {
     DB['paye_'+m] = sheetToRecords(wb.Sheets[m], PAYE_COLS_BASE, 'paye_', 1);
@@ -1294,6 +1313,14 @@ function loadPayeWorkbook(wb){
 
 function loadTdbWorkbook(wb){
   wbTdb = wb;
+  // Vérifier les onglets TDB manquants
+  const missingSheets = Object.entries(TDB_MAP_BASE)
+    .filter(([, {sheet}]) => !wb.Sheets[sheet])
+    .map(([, {sheet}]) => sheet);
+  if(missingSheets.length > 0 && missingSheets.length < Object.keys(TDB_MAP_BASE).length) {
+    const preview = missingSheets.slice(0, 4).join(', ') + (missingSheets.length > 4 ? '…' : '');
+    notify('⚠ Onglets manquants dans TDB : ' + preview);
+  }
   // Charger tous les onglets connus (structure fixe)
   Object.entries(TDB_MAP_BASE).forEach(([key, {sheet, cols}]) => {
     const ws = wb.Sheets[sheet];
@@ -1731,6 +1758,8 @@ async function saveAllFiles(){
     }
   }
 
+  _alertsCache = null; // Invalider le cache des alertes après sauvegarde
+  updateDirtyIndicator();
   btn.disabled=false; btn.textContent='💾 Enregistrer';
   if(ok) hideFirstSaveBanner();
   notify(ok?'✓ Fichiers sauvegardés (styles préservés)':'⚠ Sauvegarde partielle');
@@ -1958,12 +1987,61 @@ function hideFirstSaveBanner(){
   const b=document.getElementById('first-save-banner'); if(b) b.remove();
 }
 
+// ─── INDICATEUR MODIFICATIONS NON SAUVEGARDÉES ────────────
+function updateDirtyIndicator(){
+  const isDirty = dirtyPaye || dirtyTdb;
+  const el = document.getElementById('dirty-indicator');
+  if(el) el.style.display = isDirty ? 'flex' : 'none';
+  const btn = document.getElementById('save-all-btn');
+  if(btn && !btn.disabled) {
+    btn.textContent = isDirty ? '💾 Enregistrer*' : '💾 Enregistrer';
+  }
+}
+
+// ─── CACHE DES ALERTES ────────────────────────────────────
+// Evite de recalculer toutes les alertes à chaque changement de vue
+function getAlerts(today){
+  const todayKey = today.toDateString();
+  if(_alertsCache && _alertsCacheDate === todayKey && !dirtyPaye && !dirtyTdb){
+    return _alertsCache;
+  }
+  _alertsCache = collectAllAlerts(today);
+  _alertsCacheDate = todayKey;
+  return _alertsCache;
+}
+
+// ─── SAUVEGARDE AUTOMATIQUE ───────────────────────────────
+function startAutoSave(){
+  stopAutoSave();
+  const s = ADMIN.settings.autoSave;
+  if(!s || !s.enabled) return;
+  const ms = Math.max(1, s.intervalMinutes || 5) * 60 * 1000;
+  _autoSaveTimer = setInterval(async () => {
+    if(dirtyPaye || dirtyTdb){
+      await saveAllFiles();
+    }
+  }, ms);
+  // Mettre à jour l'indicateur de statut
+  const el = document.getElementById('autosave-status');
+  const txt = document.getElementById('autosave-status-text');
+  if(el) el.style.display = 'flex';
+  if(txt) txt.textContent = `Autosauvegarde toutes les ${s.intervalMinutes} min`;
+}
+
+function stopAutoSave(){
+  if(_autoSaveTimer){ clearInterval(_autoSaveTimer); _autoSaveTimer = null; }
+  const el = document.getElementById('autosave-status');
+  if(el) el.style.display = 'none';
+}
+
 function markDirty(which){
   if(which==='paye')dirtyPaye=true;else dirtyTdb=true;
+  _alertsCache = null; // Invalider le cache des alertes
+  updateDirtyIndicator();
   const btn=document.getElementById('save-all-btn');if(!btn)return;
-  btn.disabled=false;btn.textContent='💾 Enregistrer*';
+  btn.disabled=false;
   btn.style.background='var(--orange)';
-  setTimeout(()=>{btn.style.background='';btn.textContent='💾 Enregistrer';},200);
+  setTimeout(()=>{btn.style.background='';updateDirtyIndicator();},300);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2048,7 +2126,7 @@ const KPI_DEFS={
 
 function renderDashboard(){
   const today=new Date();
-  const allAlerts=collectAllAlerts(today);
+  const allAlerts=getAlerts(today);
   const nExp=allAlerts.filter(a=>a.urgency==='expired').length;
   const nCrit=allAlerts.filter(a=>a.urgency==='critical').length;
   const nWarn=allAlerts.filter(a=>a.urgency==='warning').length;
@@ -2182,7 +2260,7 @@ function renderImpChip(v){
   return`<span class="imp-chip imp-normal">${v}</span>`;
 }
 
-function setAlertFilter(f){alertFilter=f;const today=new Date();const all=collectAllAlerts(today);const st={'Disponibilités':'chip-blue','CDD':'chip-orange','CNP':'chip-orange','Apprentis':'chip-purple','Experts':'chip-blue','Détach. sortants':'chip-blue','Détach. entrants':'chip-blue','Stagiaires':'chip-green','Indispo phys.':'chip-red','Temps partiel':'chip-gray','TPT':'chip-gray','Congé parental':'chip-gray','Cartes séjour':'chip-orange'};const el=document.getElementById('alerts-list');if(el)el.innerHTML=renderAlertsList(all,st);}
+function setAlertFilter(f){alertFilter=f;const today=new Date();const all=getAlerts(today);const st={'Disponibilités':'chip-blue','CDD':'chip-orange','CNP':'chip-orange','Apprentis':'chip-purple','Experts':'chip-blue','Détach. sortants':'chip-blue','Détach. entrants':'chip-blue','Stagiaires':'chip-green','Indispo phys.':'chip-red','Temps partiel':'chip-gray','TPT':'chip-gray','Congé parental':'chip-gray','Cartes séjour':'chip-orange'};const el=document.getElementById('alerts-list');if(el)el.innerHTML=renderAlertsList(all,st);}
 function goToRecord(view,id){const nav=document.querySelector(`[data-view="${view}"]`);setView(view,nav);setTimeout(()=>{const r=document.querySelector(`tr[data-id="${id}"]`);if(r){r.scrollIntoView({behavior:'smooth',block:'center'});r.classList.add('selected')}},120);}
 
 // ═══════════════════════════════════════════════════════════
@@ -3395,6 +3473,22 @@ function renderAdminSettings(){
         </select>
         <div style="font-size:10.5px;color:var(--text-muted);margin-top:3px">Valeur pré-remplie lors d'un ajout</div>
       </div>
+      <div class="form-group">
+        <label>Sauvegarde automatique</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:4px;padding:7px 9px;background:var(--surface3);border:1px solid var(--border);border-radius:var(--r)">
+          <input type="checkbox" id="set-autosave" ${s.autoSave?.enabled?'checked':''} style="accent-color:var(--accent);width:14px;height:14px">
+          <span style="font-size:12px;font-weight:500">${s.autoSave?.enabled?'<span style="color:var(--green)">Activée</span>':'<span style="color:var(--text-muted)">Désactivée</span>'}</span>
+        </label>
+        <div style="font-size:10.5px;color:var(--text-muted);margin-top:3px">Sauvegarde automatiquement les fichiers modifiés</div>
+      </div>
+      <div class="form-group">
+        <label>Intervalle de sauvegarde auto</label>
+        <select id="set-autosave-interval">
+          ${[1,2,5,10,15,30].map(n=>`<option value="${n}" ${(s.autoSave?.intervalMinutes||5)===n?'selected':''}>${n} minute${n>1?'s':''}</option>`).join('')}
+        </select>
+        <div style="font-size:10.5px;color:var(--text-muted);margin-top:3px">Durée entre chaque sauvegarde automatique${s.autoSave?.enabled?` — <span style="color:var(--green)">active</span>`:''}
+        </div>
+      </div>
     </div>
     <div style="margin-top:14px">
       <button class="btn btn-primary" onclick="saveSettings()">✓ Enregistrer les paramètres</button>
@@ -3475,8 +3569,17 @@ function applyTheme(themeId){
 function saveSettings(){
   const h=parseInt(document.getElementById('set-horizon').value)||180;
   const di=document.getElementById('set-defimp').value;
-  ADMIN.settings.alertHorizon=h;ADMIN.settings.defaultImportance=di;
-  saveAdminConfig();notify('✓ Paramètres enregistrés');
+  const asEnabled=document.getElementById('set-autosave')?.checked||false;
+  const asInterval=parseInt(document.getElementById('set-autosave-interval')?.value)||5;
+  ADMIN.settings.alertHorizon=h;
+  ADMIN.settings.defaultImportance=di;
+  if(!ADMIN.settings.autoSave) ADMIN.settings.autoSave={};
+  ADMIN.settings.autoSave.enabled=asEnabled;
+  ADMIN.settings.autoSave.intervalMinutes=asInterval;
+  saveAdminConfig();
+  // Redémarrer le timer de sauvegarde automatique si nécessaire
+  if(asEnabled) startAutoSave(); else stopAutoSave();
+  notify('✓ Paramètres enregistrés' + (asEnabled ? ` — autosauvegarde toutes les ${asInterval} min` : ''));
 }
 
 async function forgetOneFile(which){
@@ -3613,6 +3716,8 @@ function notify(msg){const el=document.getElementById('notify');document.getElem
 updateBadges();
 // 4. Appliquer l'ordre de navigation sauvegardé
 applyNavOrder();
+// 5. Démarrer la sauvegarde automatique si elle était activée
+startAutoSave();
 tryAutoReload();
 </script>
 </body>
