@@ -464,13 +464,13 @@ const TDB_MAP_BASE={
   tdb_detach_entr: {sheet:'DETACH ENTRANTS',       cols:['matricule','nom','prenom','statut','ventilBudget','grade','dateNomination','dateAnciennete','dateEntreeStatut','dateDebut','dateFin','detachLibelle','orgOrigine','pole','service','contactAdmin']},
   tdb_dispo:       {sheet:'DISPO',                 cols:['matricule','nom','prenom','grade','categorie','positionAdmin','codeDispo','controleCode','detail','date1erDispo','dateDebut','dateFin','fin5ans','fin10ans','codeGestion','pole','service']},
   tdb_mater:       {sheet:'MATER',                 cols:['pole','matricule','nom','prenom','statut','datePrevue','dateReelle','grossessePatho','dateDebutArret','dateFinArret','arreteFait','saisieAstre','acteNaissance','couchesPatho','arreteModif','signalIJSS','envoiFormulaire','suppressionTransport','observations']},
-  tdb_parental:    {sheet:'PARENTAL',              cols:['matricule','nom','prenom','grade','positionAdmin','dateDebut','dateFin','codeGestion','pole','service','observations']},
+  tdb_parental:    {sheet:'PARENTAL',              cols:['matricule','nom','prenom','grade','positionAdmin','dateDebutPos','dateFinPos','codeGestion','pole','service','observations']},
   tdb_indispo:     {sheet:'INDISPO PHYSIQUE',      cols:['pole','matricule','nom','prenom','positionAdmin','dateDebut','dateFin','dateRelance','demandeAgentRecep','motifDemande','conseilMedical','dateExpertise','observations']},
   tdb_tpartiel:    {sheet:'TPARTIEL',              cols:['matricule','nom','prenom','statut','grade','quotite','typeTP','dateDebut','dateFin','pole','service','observations']},
   tdb_sejour:      {sheet:'Carte Sejour',          cols:['matricule','nom','prenom','statut','nationalite','numeroCarte','dateExpiration','pole','service']},
   tdb_tpt:         {sheet:'TPT',                   cols:['matricule','nom','prenom','positionAdmin','tauxRemuneration','coeffTaux','codeTpt','typeTPT','date1erTPT','dateDebut','dateFin','pole','service']},
   tdb_at:          {sheet:'AT',                    cols:['matricule','nom','prenom','typeAT','dateAT','arretTravail','dateDebutArret','dateFinArret','soins','dateDebutSoins','dateFinSoins','dateExpertise','avisMedecinExpert','saisineCommission','dateCommission','imputabilite','transmissionFinal','observations']},
-  tdb_cdi:         {sheet:'CDI',                   cols:['pole','service','matricule','nom','prenom','age','ventilBudget','statut','typeContrat','motifCode','motifLibelle','grade','dateEntree','dateDebutCdi','echeance3ans','echeance6ans']},
+  tdb_cdi:         {sheet:'CDI',                   cols:['matricule','nom','prenom','age','ventilBudget','statut','typeContrat','motifCode','motifLibelle','grade','dateEntree','date1erContrat','dateDebut','echeance3ans','echeance6ans','pole','service']},
   tdb_stag_conv:   {sheet:'STAGIAIRE CONVENTIONNE',cols:['pole','service','matricule','nom','prenom','dateDebutStage','dateFinStage','organisme']},
   tdb_comite_med:  {sheet:'COMITE MEDIC',          cols:['nom','prenom','positionActuelle','date1erSaisie','dateDebut','dateFin','observation']},
   tdb_retraite:    {sheet:'RETRAITE',              cols:['matricule','nom','nomPatronymique','prenom','dateNaissance','age','ageEn2025','limiteAge','grade','categorieAgent','codeGestion','observation']},
@@ -600,10 +600,10 @@ const SCHEMAS_BASE={
   parental:{title:'Congé parental',fields:[
     {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
     {key:'grade',label:'Grade',type:'text'},{key:'positionAdmin',label:'Position administrative',type:'text'},
-    {key:'dateDebut',label:'Date début',type:'date'},{key:'dateFin',label:'Date fin',type:'date'},
+    {key:'dateDebutPos',label:'Date début',type:'date'},{key:'dateFinPos',label:'Date fin',type:'date'},
     {key:'codeGestion',label:'Code gestion',type:'text'},{key:'pole',label:'Pôle',type:'select',options:POLES},
     {key:'service',label:'Service',type:'text'},{key:'observations',label:'Observations',type:'textarea',full:true}],
-    cols:['nom','prenom','grade','dateDebut','dateFin','pole','service']},
+    cols:['nom','prenom','grade','dateDebutPos','dateFinPos','pole','service']},
   indispo:{title:'Indisponibilité physique',fields:[
     {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'matricule',label:'Matricule',type:'text'},
     {key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
@@ -651,16 +651,17 @@ const SCHEMAS_BASE={
     {key:'observations',label:'Observations',type:'textarea',full:true}],
     cols:['nom','prenom','typeAT','dateAT','arretTravail','dateDebutArret','dateFinArret']},
   cdi:{title:'CDI',fields:[
-    {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'},
     {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
     {key:'age',label:'Âge',type:'number'},{key:'ventilBudget',label:'Ventil. budgétaire',type:'text'},
     {key:'statut',label:'Statut',type:'text'},{key:'typeContrat',label:'Type de contrat',type:'text'},
     {key:'motifCode',label:'Motif (code)',type:'text'},{key:'motifLibelle',label:'Motif (libellé)',type:'text'},
     {key:'grade',label:'Grade',type:'text'},{key:'dateEntree',label:"Date d'entrée dans l'organisme",type:'date'},
-    {key:'dateDebutCdi',label:'Date de début de CDI',type:'date'},
+    {key:'date1erContrat',label:'1er contrat saisi dans Astre',type:'date'},
+    {key:'dateDebut',label:'Date de début de CDI',type:'date'},
     {key:'echeance3ans',label:'Échéance triennale +3 ans',type:'date'},
-    {key:'echeance6ans',label:'Échéance triennale +6 ans',type:'date'}],
-    cols:['nom','prenom','grade','statut','dateEntree','dateDebutCdi','echeance3ans','echeance6ans','pole']},
+    {key:'echeance6ans',label:'Échéance triennale +6 ans',type:'date'},
+    {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'}],
+    cols:['nom','prenom','grade','statut','dateEntree','dateDebut','echeance3ans','echeance6ans','pole']},
   stag_conv:{title:'Stagiaires conventionnés',fields:[
     {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'},
     {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
@@ -1086,8 +1087,10 @@ const HEADER_ALIASES = {
   changements:      ['changementsDeremuner','changements'],
   // ── CDI ──────────────────────────────────────────────────
   dateDebutCdi:     ['datededebutdecdi','datedebutdecdi','datedebutcdi'],
-  echeance3ans:     ['echeancetriennale3ans','echeance3ans','echeance3'],
-  echeance6ans:     ['echeancetriennale6ans','echeance6ans','echeance6'],
+  echeance3ans:     ['echeancetriennale3ans','echeance3ans','echeance3',
+                     '1ereecheancetriennale','1reecheancetriennale','1ereecheance'],
+  echeance6ans:     ['echeancetriennale6ans','echeance6ans','echeance6',
+                     '2emeecheancetriennale','2emeecheance'],
 
   // ── STAGIAIRE CONVENTIONNÉ ─────────────────────────────
   dateDebutStage:   ['datededebutstage','datedebutstage'],
@@ -1226,12 +1229,10 @@ function sheetToRecords(ws, colKeys, tableKey, dataFirstRow) {
 
   // 3. Colonnes custom admin et importance
   const customColsAdmin = tableKey ? (ADMIN.customCols[tableKey]||[]) : [];
-  const impEnabled = tableKey ? ADMIN.importanceEnabled[tableKey] : false;
-  if(impEnabled) {
-    headerRow.forEach((h, idx) => {
-      if(!colMap[idx] && normalizeHeader(String(h||'')) === 'importance') colMap[idx] = '_importance';
-    });
-  }
+  // Mapper la colonne IMPORTANCE vers _importance si présente dans l'en-tête Excel
+  headerRow.forEach((h, idx) => {
+    if(!colMap[idx] && normalizeHeader(String(h||'')) === 'importance') colMap[idx] = '_importance';
+  });
   customColsAdmin.forEach(c => {
     if(!c.isDynamic && !mappedKeys.has(c.key)) {
       const idx = headerRow.findIndex(h => normalizeHeader(String(h||'')) === normalizeHeader(c.label));
@@ -1716,6 +1717,63 @@ function rewriteSheetXml(sheetXml, records, colKeys, dataStartRow, strings, colL
   return result;
 }
 
+// Retourne les clés de colonnes dans l'ordre original de l'onglet Excel (depuis le workbook chargé)
+// Garantit que la sauvegarde écrit exactement les mêmes colonnes que celles présentes dans l'en-tête
+function getWriteColKeysFromWb(wb, sheetName){
+  if(!wb) return null;
+  const ws=wb.Sheets[sheetName];
+  if(!ws) return null;
+  const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,cellDates:false});
+  if(!raw.length) return null;
+  let headerIdx=0;
+  for(let i=0;i<Math.min(raw.length,5);i++){
+    if(raw[i]&&raw[i].some(c=>c!==''&&c!==null&&c!==undefined)){headerIdx=i;break;}
+  }
+  const headerRow=raw[headerIdx]||[];
+  if(!headerRow.length) return null;
+  const writeKeys=[];
+  const usedKeys=new Set();
+  let resolvedCount=0;
+  headerRow.forEach((h,idx)=>{
+    const hStr=String(h||'').replace(/\n/g,' ').trim();
+    if(!hStr){writeKeys.push('_empty_col_'+idx);return;}
+    const norm=normalizeHeader(hStr);
+    if(norm==='importance'){
+      writeKeys.push('_importance');
+      if(!usedKeys.has('_importance')) usedKeys.add('_importance');
+      resolvedCount++;return;
+    }
+    const resolved=resolveHeader(hStr);
+    if(resolved){
+      resolvedCount++;
+      if(!usedKeys.has(resolved)){writeKeys.push(resolved);usedKeys.add(resolved);}
+      else{writeKeys.push(resolved+'_dup_'+idx);}
+    } else {
+      writeKeys.push('_col_'+norm.slice(0,20)+'_'+idx);
+    }
+  });
+  // Si moins de 30% des en-têtes non-vides sont reconnus → probablement pas une vraie ligne d'en-tête
+  const nonEmpty=headerRow.filter(h=>String(h||'').trim()).length;
+  if(nonEmpty>0&&resolvedCount/nonEmpty<0.3) return null;
+  return writeKeys;
+}
+
+// Retourne les labels pour un tableau de clés quelconque (pour mettre à jour les en-têtes)
+function getLabelsForColKeys(colKeys,tableKey){
+  const schemaKey=tableKey==='paye_'?'paye':tableKey==='paye_N1'?'n1':tableKey.startsWith('tdb_')?tableKey.slice(4):tableKey;
+  const schema=SCHEMAS_BASE[schemaKey];
+  const fieldMap={};
+  if(schema) schema.fields.forEach(f=>{fieldMap[f.key]=f.label;});
+  const customDefs=getCustomColDefs(tableKey);
+  return colKeys.map(k=>{
+    if(k==='_importance') return 'IMPORTANCE';
+    if(k.startsWith('_')) return k;
+    const cd=customDefs.find(c=>c.key===k);
+    if(cd) return cd.label;
+    return fieldMap[k]||k;
+  });
+}
+
 // Récupérer le mapping nom d'onglet → chemin XML dans le ZIP
 async function getSheetPathMap(zip){
   const wbXml=await zip.files['xl/workbook.xml'].async('text');
@@ -1785,12 +1843,23 @@ async function getSheetTablePaths(zip,sheetPath){
 function updateTableXml(tableXml,lastCol,lastRow,extraColLabels){
   const refVal=`A1:${lastCol}${Math.max(lastRow,1)}`;
   let r=tableXml.replace(/((?:table|autoFilter)[^>]+\s)ref="[^"]*"/g,`$1ref="${refVal}"`);
+  const existingCount=(tableXml.match(/<tableColumn[\s/]/g)||[]).length;
+  // Calculer le nombre total de colonnes couvert par la nouvelle ref
+  let totalCols=0;
+  for(const c of lastCol.toUpperCase()) totalCols=totalCols*26+(c.charCodeAt(0)-64);
   if(extraColLabels&&extraColLabels.length>0){
-    const existingCount=(tableXml.match(/<tableColumn[\s/]/g)||[]).length;
     const newTotal=existingCount+extraColLabels.length;
     r=r.replace(/(<tableColumns\b[^>]*\bcount=)"(\d+)"/,`$1"${newTotal}"`);
     const newCols=extraColLabels.map((lbl,i)=>`<tableColumn id="${existingCount+i+1}" name="${xmlEsc(lbl)}"/>`).join('');
     r=r.replace('</tableColumns>',newCols+'</tableColumns>');
+  } else if(totalCols>existingCount){
+    // La ref couvre plus de colonnes que ce qui est défini : ajouter les manquantes
+    const newCols=[];
+    for(let i=existingCount;i<totalCols;i++){
+      newCols.push(`<tableColumn id="${i+1}" name="Column${i+1}"/>`);
+    }
+    r=r.replace(/(<tableColumns\b[^>]*\bcount=)"(\d+)"/,`$1"${totalCols}"`);
+    r=r.replace('</tableColumns>',newCols.join('')+'</tableColumns>');
   }
   return r;
 }
@@ -1810,11 +1879,10 @@ async function saveAllFiles(){
         const ssXml=await zipPaye.files['xl/sharedStrings.xml'].async('text');
         const strings=parseSharedStrings(ssXml);
 
-        // Colonnes effectives paye (identiques pour tous les mois)
-        const payeColKeys=getEffectiveColsForSave('paye_');
-        const payeColLabels=getEffectiveColLabelsForSave('paye_');
+        // Colonnes dans l'ordre original de l'onglet JANV (réutilisé pour tous les mois)
+        const payeColKeys=getWriteColKeysFromWb(wbPaye,'JANV')||getEffectiveColsForSave('paye_');
+        const payeColLabels=getLabelsForColKeys(payeColKeys,'paye_');
         const payeNumKeys=getNumericKeySet('paye_');
-        const payeExtraLabels=payeColLabels.slice(PAYE_COLS_BASE.length);
         // Réécrire tous les onglets mois
         for(const month of MONTHS){
           const path=nameToPath[month];
@@ -1825,23 +1893,26 @@ async function saveAllFiles(){
           for(const tp of await getSheetTablePaths(zipPaye,path)){
             if(!zipPaye.files[tp]) continue;
             const txml=await zipPaye.files[tp].async('text');
-            zipPaye.file(tp,updateTableXml(txml,idxToCol(payeColKeys.length-1),1+recs.length,payeExtraLabels.length?payeExtraLabels:null));
+            const tblColCount=(txml.match(/<tableColumn[\s/]/g)||[]).length;
+            const extraLabels=payeColLabels.slice(tblColCount);
+            zipPaye.file(tp,updateTableXml(txml,idxToCol(payeColKeys.length-1),1+recs.length,extraLabels.length?extraLabels:null));
           }
         }
-        // N+1 (en-têtes sur 3 lignes → données à partir de la ligne 4)
+        // N+1 (en-têtes ligne 1, lignes 2-3 vides pour style, données à partir de la ligne 4)
         const n1path=nameToPath['N+1'];
         if(n1path&&zipPaye.files[n1path]){
           const xml=await zipPaye.files[n1path].async('text');
-          const n1ColKeys=getEffectiveColsForSave('paye_N1');
-          const n1ColLabels=getEffectiveColLabelsForSave('paye_N1');
+          const n1ColKeys=getWriteColKeysFromWb(wbPaye,'N+1')||getEffectiveColsForSave('paye_N1');
+          const n1ColLabels=getLabelsForColKeys(n1ColKeys,'paye_N1');
           const n1NumKeys=getNumericKeySet('paye_N1');
           const n1Recs=DB['paye_N1']||[];
-          const n1ExtraLabels=n1ColLabels.slice(N1_COLS.length);
           zipPaye.file(n1path,rewriteSheetXml(xml,n1Recs,n1ColKeys,4,strings,n1ColLabels,n1NumKeys));
           for(const tp of await getSheetTablePaths(zipPaye,n1path)){
             if(!zipPaye.files[tp]) continue;
             const txml=await zipPaye.files[tp].async('text');
-            zipPaye.file(tp,updateTableXml(txml,idxToCol(n1ColKeys.length-1),3+n1Recs.length,n1ExtraLabels.length?n1ExtraLabels:null));
+            const tblColCount=(txml.match(/<tableColumn[\s/]/g)||[]).length;
+            const extraLabels=n1ColLabels.slice(tblColCount);
+            zipPaye.file(tp,updateTableXml(txml,idxToCol(n1ColKeys.length-1),3+n1Recs.length,extraLabels.length?extraLabels:null));
           }
         }
         // Supprimer calcChain (Excel le regénère proprement à l'ouverture)
@@ -1868,17 +1939,18 @@ async function saveAllFiles(){
           const path=nameToPath[sheet];
           if(!path||!zipTdb.files[path]) continue;
           const xml=await zipTdb.files[path].async('text');
-          const tdbColKeys=getEffectiveColsForSave(key);
-          const tdbColLabels=getEffectiveColLabelsForSave(key);
+          // Utiliser l'ordre original des colonnes Excel pour éviter tout décalage et corruption
+          const tdbColKeys=getWriteColKeysFromWb(wbTdb,sheet)||getEffectiveColsForSave(key);
+          const tdbColLabels=getLabelsForColKeys(tdbColKeys,key);
           const tdbNumKeys=getNumericKeySet(key);
           const recs=DB[key]||[];
           // En-tête ligne 1, données ligne 2
           zipTdb.file(path,rewriteSheetXml(xml,recs,tdbColKeys,2,strings,tdbColLabels,tdbNumKeys));
-          const baseCount=TDB_MAP_BASE[key].cols.length;
-          const extraLabels=tdbColLabels.slice(baseCount);
           for(const tp of await getSheetTablePaths(zipTdb,path)){
             if(!zipTdb.files[tp]) continue;
             const txml=await zipTdb.files[tp].async('text');
+            const tblColCount=(txml.match(/<tableColumn[\s/]/g)||[]).length;
+            const extraLabels=tdbColLabels.slice(tblColCount);
             zipTdb.file(tp,updateTableXml(txml,idxToCol(tdbColKeys.length-1),1+recs.length,extraLabels.length?extraLabels:null));
           }
         }
