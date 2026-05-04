@@ -1700,7 +1700,7 @@ function rewriteSheetXml(sheetXml, records, colKeys, dataStartRow, strings, colL
       const hRe=new RegExp(`(<row r="${headerRowNum}"[^>]*>)([\\s\\S]*?)(</row>)`);
       const hMatch=result.match(hRe);
       if(hMatch){
-        const existingCells=(hMatch[2].match(/<c r="[A-Z]+"[^>]*(?:\/>|>[\s\S]*?<\/c>)/g)||[]);
+        const existingCells=(hMatch[2].match(/<c r="[A-Z]+\d+"[^>]*(?:\/>|>[\s\S]*?<\/c>)/g)||[]);
         const existingCount=existingCells.length;
         if(nCols>existingCount){
           const lastS=(existingCells.length>0?(existingCells[existingCells.length-1].match(/s="(\d+)"/)??[,'0'])[1]:'0');
@@ -1843,7 +1843,9 @@ async function getSheetTablePaths(zip,sheetPath){
 
 // Met à jour le XML d'une table Excel : plage (ref) + nouvelles colonnes si besoin
 function updateTableXml(tableXml,lastCol,lastRow,extraColLabels){
-  const refVal=`A1:${lastCol}${Math.max(lastRow,1)}`;
+  const origRef=tableXml.match(/\bref="([A-Z]+\d+):[A-Z]+\d+"/);
+  const startCell=origRef?origRef[1]:'A1';
+  const refVal=`${startCell}:${lastCol}${Math.max(lastRow,1)}`;
   // Remplacer TOUS les attributs ref="CellRange" (sur <table> et <autoFilter>)
   // On utilise un pattern simple sur les plages de cellules plutôt qu'un pattern dépendant
   // du contexte, car <autoFilter> n'a souvent aucun autre attribut avant ref=
