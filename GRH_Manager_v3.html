@@ -455,7 +455,7 @@ const N1_COLS=['pole','matricule','nom','prenom','moisPaye','type','impactPaye',
 
 const TDB_MAP_BASE={
   // Mappings EXACTS basés sur les vrais en-têtes Excel (ordre des colonnes)
-  tdb_cdd:         {sheet:'CDD',                  cols:['matricule','nom','prenom','age','ventilBudget','statut','typeContrat','motifCode','motifLibelle','grade','dateDebut','dateFin','date1erContrat','dateEntree','pole','service']},
+  tdb_cdd:         {sheet:'CDD',                  cols:['matricule','nom','prenom','age','ventilBudget','statut','typeContrat','motifCode','motifLibelle','grade','dateDebut','dateFin','date1erContrat','dateEntree','pole','service','propositionCDI','observations']},
   tdb_cnp:         {sheet:'CNP',                  cols:['matricule','nom','prenom','grade','age','ventilBudget','motifCode','motifLibelle','dateDebut','dateFin','date1erContrat','dateEntree','pole','service']},
   tdb_stagiaires:  {sheet:'STAGIAIRES',            cols:['matricule','nom','prenom','grade','pole','typeStage','debutStage','titularisation','noticeECS','dateEnvoiECS','dateReceptionECS','noticeEFS','dateEnvoiEFS','dateReceptionEFS','cnracl','formation','sarcp','observations']},
   tdb_apprentis:   {sheet:'APPRENTIS',             cols:['matricule','nom','prenom','age','typeContrat','numContrat','dateDebut','dateFin','pole','service','maitre','maNbi','changements']},
@@ -492,6 +492,14 @@ const SCHEMAS_BASE={
     {key:'bulletinElectro',label:'Bulletin Électro',type:'select',options:['OK','A FAIRE','SO','']},
     {key:'remarques',label:'Remarques',type:'textarea',full:true}],
     cols:['pole','matricule','nom','prenom','type','impactPaye','saisie','acte','paye','bulletinElectro']},
+  n1:{title:'Report N+1',fields:[
+    {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'matricule',label:'Matricule',type:'text'},
+    {key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
+    {key:'moisPaye',label:'Mois de paye',type:'select',options:MONTHS},
+    {key:'type',label:'Type',type:'select',options:TYPES_PAYE},
+    {key:'impactPaye',label:'Impact Paye',type:'text'},
+    {key:'dateImpact',label:'Date impact',type:'date'}],
+    cols:['pole','matricule','nom','prenom','moisPaye','type','impactPaye','dateImpact']},
   dispo:{title:'Disponibilités',fields:[
     {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
     {key:'grade',label:'Grade',type:'text'},{key:'categorie',label:'Catégorie',type:'select',options:['T','C','B','A']},
@@ -761,7 +769,7 @@ function getCustomColDefs(tableKey){
 
 const VIEW_MAP={
   paye:          {dbKey:()=>'paye_'+currentMonth, schema:'paye',        showMonths:true,  file:'paye'},
-  n1:            {dbKey:()=>'paye_N1',             schema:'paye',        showMonths:false, file:'paye'},
+  n1:            {dbKey:()=>'paye_N1',             schema:'n1',          showMonths:false, file:'paye'},
   cdd:           {dbKey:()=>'tdb_cdd',             schema:'cdd',         file:'tdb'},
   cnp:           {dbKey:()=>'tdb_cnp',             schema:'cnp',         file:'tdb'},
   stagiaires:    {dbKey:()=>'tdb_stagiaires',       schema:'stagiaires',  file:'tdb'},
@@ -999,7 +1007,8 @@ const HEADER_ALIASES = {
   dateDebutArret:   ['datedebutarret'],
   dateFinArret:     ['datefinArret'],
   arreteFait:       ['arretefait'],
-  saisieAstre:      ['saisie','saisieastre'],
+  saisie:           ['saisie'],           // H:'SAISIE' dans Cahier de Paye (NE PAS fusionner avec saisieAstre)
+  saisieAstre:      ['saisieastre','saisieastredanslastre'],
   acteNaissance:    ['actenaissance','actedenaissance'],  // M:'Acte de naissance'
   couchesPatho:     ['couchespathologiques','couchespatho'],
   arreteModif:      ['arretModificatif','arretemodificatif'],
@@ -1527,7 +1536,12 @@ let zipPaye=null, zipTdb=null;  // JSZip instances — conservées entre sauvega
 let altHandlePaye=null, altHandleTdb=null;
 
 // ─── XML HELPERS ──────────────────────────────────────────
-function xmlEsc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');}
+function xmlEsc(s){
+  // Supprimer les caractères de contrôle XML invalides (U+0000-U+0008, U+000B, U+000C, U+000E-U+001F)
+  // qui rendent le fichier XLSX illisible par Excel
+  const clean=String(s).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,'');
+  return clean.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
+}
 
 function idxToCol(n){
   let s='';n++;
@@ -1556,7 +1570,13 @@ function parseSharedStrings(xml){
 
 // Construire XML sharedStrings depuis tableau
 function buildSSXml(strings){
-  const sis=strings.map(s=>`<si><t>${xmlEsc(s)}</t></si>`).join('');
+  const sis=strings.map(s=>{
+    const escaped=xmlEsc(s);
+    // xml:space="preserve" requis si la chaîne commence/finit par un espace ou contient un saut de ligne
+    // Sans cet attribut Excel supprime les espaces en début/fin et peut corrompre le fichier
+    const needPreserve=/^\s|\s$|\n/.test(s);
+    return`<si><t${needPreserve?' xml:space="preserve"':''}>${escaped}</t></si>`;
+  }).join('');
   return`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${strings.length}" uniqueCount="${strings.length}">${sis}</sst>`;
 }
 
@@ -1600,9 +1620,10 @@ function extractColStyles(sheetXml, nCols, dataStartRow){
 }
 
 // Réécrire les données d'une feuille sans toucher les styles
-// dataStartRow = première ligne de données Excel (1-based), ex: 4 pour CDD
-// strings = tableau partagé (MÊME référence pour toutes les feuilles d'un workbook)
-function rewriteSheetXml(sheetXml, records, colKeys, dataStartRow, strings){
+// dataStartRow = première ligne de données Excel (1-based)
+// colLabels = labels de toutes les colonnes (pour mise à jour des en-têtes si nouvelles colonnes)
+// numericKeys = Set de clés à écrire comme nombre (ex: matricule)
+function rewriteSheetXml(sheetXml, records, colKeys, dataStartRow, strings, colLabels, numericKeys){
   const nCols=colKeys.length;
   const colLetters=colKeys.map((_,i)=>idxToCol(i));
   const colStyles=extractColStyles(sheetXml, nCols, dataStartRow);
@@ -1640,9 +1661,12 @@ function rewriteSheetXml(sheetXml, records, colKeys, dataStartRow, strings){
           return`<c r="${ref}" s="${s}" t="n"><v>${serial}</v></c>`;
         }
       }
-      // Nombre
+      // Nombre (type JS natif)
       if(typeof raw==='number')
         return`<c r="${ref}" s="${s}" t="n"><v>${raw}</v></c>`;
+      // Chaîne numérique pour colonnes marquées numériques (ex: matricule)
+      if(numericKeys&&numericKeys.has(colKeys[ci])&&typeof raw==='string'&&/^\d+$/.test(raw)&&raw.length>0&&!raw.startsWith('0'))
+        return`<c r="${ref}" s="${s}" t="n"><v>${parseInt(raw,10)}</v></c>`;
 
       // Chaîne → sharedStrings
       const idx=getOrAdd(String(raw),strings);
@@ -1653,7 +1677,8 @@ function rewriteSheetXml(sheetXml, records, colKeys, dataStartRow, strings){
   }).join('');
 
   // Supprimer toutes les lignes de données du XML original
-  const cleaned=sheetXml.replace(/<row r="(\d+)"[^>]*>[\s\S]*?<\/row>/g,(match,r)=>{
+  // Le pattern gère à la fois les rows normaux ET les rows self-closing (<row r="N" .../>)
+  const cleaned=sheetXml.replace(/<row r="(\d+)"[^>]*(?:\/>|>[\s\S]*?<\/row>)/g,(match,r)=>{
     return parseInt(r)>=dataStartRow?'':match;
   });
 
@@ -1662,8 +1687,32 @@ function rewriteSheetXml(sheetXml, records, colKeys, dataStartRow, strings){
 
   // Mettre à jour la dimension
   const lastCol=idxToCol(nCols-1);
-  const lastRow=dataStartRow-1+records.length;
+  const lastRow=Math.max(dataStartRow,dataStartRow-1+records.length);
   result=result.replace(/<dimension ref="[^"]*"\/>/, `<dimension ref="A1:${lastCol}${lastRow}"/>`);
+
+  // Ajouter les en-têtes manquants pour les nouvelles colonnes (importance, custom)
+  if(colLabels&&colLabels.length>=nCols){
+    const headerRowNum=dataStartRow-1;
+    if(headerRowNum>=1){
+      const hRe=new RegExp(`(<row r="${headerRowNum}"[^>]*>)([\\s\\S]*?)(</row>)`);
+      const hMatch=result.match(hRe);
+      if(hMatch){
+        const existingCells=(hMatch[2].match(/<c r="[A-Z]+"[^>]*(?:\/>|>[\s\S]*?<\/c>)/g)||[]);
+        const existingCount=existingCells.length;
+        if(nCols>existingCount){
+          const lastS=(existingCells.length>0?(existingCells[existingCells.length-1].match(/s="(\d+)"/)??[,'0'])[1]:'0');
+          const newHdrCells=[];
+          for(let i=existingCount;i<nCols;i++){
+            const idx=getOrAdd(colLabels[i]||colKeys[i],strings);
+            newHdrCells.push(`<c r="${idxToCol(i)}${headerRowNum}" s="${lastS}" t="s"><v>${idx}</v></c>`);
+          }
+          const updRow=hMatch[1].replace(/spans="[^"]*"/,`spans="1:${nCols}"`);
+          result=result.replace(hMatch[0],`${updRow}${hMatch[2]}${newHdrCells.join('')}${hMatch[3]}`);
+        }
+      }
+    }
+  }
+
   return result;
 }
 
@@ -1693,6 +1742,59 @@ function getEffectiveColsForSave(tableKey){
   return [...base,...custom];
 }
 
+// Labels des colonnes effectives (pour écriture des en-têtes Excel si nouvelles colonnes)
+function getEffectiveColLabelsForSave(tableKey){
+  const schemaKey=tableKey==='paye_'?'paye':tableKey==='paye_N1'?'n1':tableKey.startsWith('tdb_')?tableKey.slice(4):tableKey;
+  const schema=SCHEMAS_BASE[schemaKey];
+  const fieldMap={};
+  if(schema) schema.fields.forEach(f=>{fieldMap[f.key]=f.label;});
+  const customDefs=getCustomColDefs(tableKey);
+  return getEffectiveColsForSave(tableKey).map(k=>{
+    if(k==='_importance') return 'IMPORTANCE';
+    const cd=customDefs.find(c=>c.key===k);
+    if(cd) return cd.label;
+    return fieldMap[k]||k;
+  });
+}
+
+// Clés à écrire comme nombres (matricule + champs type 'number' du schéma)
+function getNumericKeySet(tableKey){
+  const schemaKey=tableKey==='paye_'?'paye':tableKey==='paye_N1'?'n1':tableKey.startsWith('tdb_')?tableKey.slice(4):tableKey;
+  const schema=SCHEMAS_BASE[schemaKey];
+  const s=new Set(['matricule']);
+  if(schema) schema.fields.forEach(f=>{if(f.type==='number') s.add(f.key);});
+  return s;
+}
+
+// Chemins des fichiers table associés à une feuille (via ses _rels)
+async function getSheetTablePaths(zip,sheetPath){
+  const relsPath=sheetPath.replace('xl/worksheets/','xl/worksheets/_rels/')+'.rels';
+  if(!zip.files[relsPath]) return[];
+  const relsXml=await zip.files[relsPath].async('text');
+  const paths=[];
+  const re=/<Relationship[^>]+Type="[^"]*\/table"[^>]+Target="([^"]+)"/gi;
+  let m;
+  while((m=re.exec(relsXml))!==null){
+    const t=m[1];
+    paths.push(t.startsWith('../')?'xl/'+t.slice(3):'xl/worksheets/'+t);
+  }
+  return paths;
+}
+
+// Met à jour le XML d'une table Excel : plage (ref) + nouvelles colonnes si besoin
+function updateTableXml(tableXml,lastCol,lastRow,extraColLabels){
+  const refVal=`A1:${lastCol}${Math.max(lastRow,1)}`;
+  let r=tableXml.replace(/((?:table|autoFilter)[^>]+\s)ref="[^"]*"/g,`$1ref="${refVal}"`);
+  if(extraColLabels&&extraColLabels.length>0){
+    const existingCount=(tableXml.match(/<tableColumn[\s/]/g)||[]).length;
+    const newTotal=existingCount+extraColLabels.length;
+    r=r.replace(/(<tableColumns\b[^>]*\bcount=)"(\d+)"/,`$1"${newTotal}"`);
+    const newCols=extraColLabels.map((lbl,i)=>`<tableColumn id="${existingCount+i+1}" name="${xmlEsc(lbl)}"/>`).join('');
+    r=r.replace('</tableColumns>',newCols+'</tableColumns>');
+  }
+  return r;
+}
+
 // ─── SAUVEGARDE PRINCIPALE ────────────────────────────────
 async function saveAllFiles(){
   const btn=document.getElementById('save-all-btn');
@@ -1708,19 +1810,42 @@ async function saveAllFiles(){
         const ssXml=await zipPaye.files['xl/sharedStrings.xml'].async('text');
         const strings=parseSharedStrings(ssXml);
 
+        // Colonnes effectives paye (identiques pour tous les mois)
+        const payeColKeys=getEffectiveColsForSave('paye_');
+        const payeColLabels=getEffectiveColLabelsForSave('paye_');
+        const payeNumKeys=getNumericKeySet('paye_');
+        const payeExtraLabels=payeColLabels.slice(PAYE_COLS_BASE.length);
         // Réécrire tous les onglets mois
         for(const month of MONTHS){
           const path=nameToPath[month];
           if(!path||!zipPaye.files[path]) continue;
           const xml=await zipPaye.files[path].async('text');
-          zipPaye.file(path, rewriteSheetXml(xml, DB['paye_'+month], getEffectiveColsForSave('paye_'), 2, strings));
+          const recs=DB['paye_'+month]||[];
+          zipPaye.file(path,rewriteSheetXml(xml,recs,payeColKeys,2,strings,payeColLabels,payeNumKeys));
+          for(const tp of await getSheetTablePaths(zipPaye,path)){
+            if(!zipPaye.files[tp]) continue;
+            const txml=await zipPaye.files[tp].async('text');
+            zipPaye.file(tp,updateTableXml(txml,idxToCol(payeColKeys.length-1),1+recs.length,payeExtraLabels.length?payeExtraLabels:null));
+          }
         }
-        // N+1 (en-têtes sur 2 lignes → données à partir de la ligne 3)
+        // N+1 (en-têtes sur 3 lignes → données à partir de la ligne 4)
         const n1path=nameToPath['N+1'];
         if(n1path&&zipPaye.files[n1path]){
           const xml=await zipPaye.files[n1path].async('text');
-          zipPaye.file(n1path, rewriteSheetXml(xml, DB['paye_N1'], getEffectiveColsForSave('paye_N1'), 4, strings));
+          const n1ColKeys=getEffectiveColsForSave('paye_N1');
+          const n1ColLabels=getEffectiveColLabelsForSave('paye_N1');
+          const n1NumKeys=getNumericKeySet('paye_N1');
+          const n1Recs=DB['paye_N1']||[];
+          const n1ExtraLabels=n1ColLabels.slice(N1_COLS.length);
+          zipPaye.file(n1path,rewriteSheetXml(xml,n1Recs,n1ColKeys,4,strings,n1ColLabels,n1NumKeys));
+          for(const tp of await getSheetTablePaths(zipPaye,n1path)){
+            if(!zipPaye.files[tp]) continue;
+            const txml=await zipPaye.files[tp].async('text');
+            zipPaye.file(tp,updateTableXml(txml,idxToCol(n1ColKeys.length-1),3+n1Recs.length,n1ExtraLabels.length?n1ExtraLabels:null));
+          }
         }
+        // Supprimer calcChain (Excel le regénère proprement à l'ouverture)
+        if(zipPaye.files['xl/calcChain.xml']) zipPaye.remove('xl/calcChain.xml');
         // Réécrire sharedStrings avec l'ensemble complet
         zipPaye.file('xl/sharedStrings.xml', buildSSXml(strings));
 
@@ -1743,9 +1868,22 @@ async function saveAllFiles(){
           const path=nameToPath[sheet];
           if(!path||!zipTdb.files[path]) continue;
           const xml=await zipTdb.files[path].async('text');
-          // Structure confirmée par les fichiers modèles : en-tête ligne 1, données ligne 2
-          zipTdb.file(path, rewriteSheetXml(xml, DB[key]||[], getEffectiveColsForSave(key), 2, strings));
+          const tdbColKeys=getEffectiveColsForSave(key);
+          const tdbColLabels=getEffectiveColLabelsForSave(key);
+          const tdbNumKeys=getNumericKeySet(key);
+          const recs=DB[key]||[];
+          // En-tête ligne 1, données ligne 2
+          zipTdb.file(path,rewriteSheetXml(xml,recs,tdbColKeys,2,strings,tdbColLabels,tdbNumKeys));
+          const baseCount=TDB_MAP_BASE[key].cols.length;
+          const extraLabels=tdbColLabels.slice(baseCount);
+          for(const tp of await getSheetTablePaths(zipTdb,path)){
+            if(!zipTdb.files[tp]) continue;
+            const txml=await zipTdb.files[tp].async('text');
+            zipTdb.file(tp,updateTableXml(txml,idxToCol(tdbColKeys.length-1),1+recs.length,extraLabels.length?extraLabels:null));
+          }
         }
+        // Supprimer calcChain (Excel le regénère proprement à l'ouverture)
+        if(zipTdb.files['xl/calcChain.xml']) zipTdb.remove('xl/calcChain.xml');
         zipTdb.file('xl/sharedStrings.xml', buildSSXml(strings));
 
         const buf=await zipTdb.generateAsync({type:'arraybuffer',compression:'DEFLATE',compressionOptions:{level:6}});
@@ -2106,6 +2244,11 @@ function collectAllAlerts(today){
   DB['tdb_tpt'].forEach(r=>push('TPT','tpt',r.id,r.nom,r.prenom,r.pole,'Fin TPT',r.dateFin,diff(r.dateFin),r._importance));
   DB['tdb_parental'].forEach(r=>push('Congé parental','parental',r.id,r.nom,r.prenom,r.pole,'Fin congé',r.dateFin,diff(r.dateFin),r._importance));
   DB['tdb_sejour'].forEach(r=>push('Cartes séjour','sejour',r.id,r.nom,r.prenom,r.pole,'Expiration carte',r.dateExpiration,diff(r.dateExpiration),r._importance));
+  DB['tdb_mater'].forEach(r=>{push('Maternité','mater',r.id,r.nom,r.prenom,r.pole,'Accouchement prévu',r.datePrevue,diff(r.datePrevue),r._importance);push('Maternité','mater',r.id,r.nom,r.prenom,r.pole,'Fin arrêt mat.',r.dateFinArret,diff(r.dateFinArret),r._importance);});
+  DB['tdb_at'].forEach(r=>{const dE=diff(r.dateExpertise);if(dE!==null)push('AT','at',r.id,r.nom,r.prenom,'','Date expertise',r.dateExpertise,dE,r._importance);const dC=diff(r.dateCommission);if(dC!==null)push('AT','at',r.id,r.nom,r.prenom,'','Date commission',r.dateCommission,dC,r._importance);});
+  DB['tdb_cdi'].forEach(r=>{push('CDI','cdi',r.id,r.nom,r.prenom,r.pole,'Échéance 3 ans',r.echeance3ans,diff(r.echeance3ans),r._importance);push('CDI','cdi',r.id,r.nom,r.prenom,r.pole,'Échéance 6 ans',r.echeance6ans,diff(r.echeance6ans),r._importance);});
+  DB['tdb_stag_conv'].forEach(r=>push('Stag. conv.','stag-conv',r.id,r.nom,r.prenom,r.pole,'Fin stage',r.dateFinStage,diff(r.dateFinStage),r._importance));
+  DB['tdb_comite_med'].forEach(r=>push('Comité méd.','comite-med',r.id,r.nom,r.prenom,'','Fin dossier',r.dateFin,diff(r.dateFin),r._importance));
   const ord={expired:0,critical:1,warning:2,soon:3,info:4};
   return alerts.filter(a=>a.diff!==null).sort((a,b)=>ord[a.urgency]-ord[b.urgency]||a.diff-b.diff);
 }
@@ -2142,7 +2285,7 @@ function renderDashboard(){
   const nCrit=allAlerts.filter(a=>a.urgency==='critical').length;
   const nWarn=allAlerts.filter(a=>a.urgency==='warning').length;
   const nSoon=allAlerts.filter(a=>a.urgency==='soon'||a.urgency==='info').length;
-  const srcTags={'Disponibilités':'chip-blue','CDD':'chip-orange','CNP':'chip-orange','Apprentis':'chip-purple','Experts':'chip-blue','Détach. sortants':'chip-blue','Détach. entrants':'chip-blue','Stagiaires':'chip-green','Indispo phys.':'chip-red','Temps partiel':'chip-gray','TPT':'chip-gray','Congé parental':'chip-gray','Cartes séjour':'chip-orange'};
+  const srcTags={'Disponibilités':'chip-blue','CDD':'chip-orange','CNP':'chip-orange','Apprentis':'chip-purple','Experts':'chip-blue','Détach. sortants':'chip-blue','Détach. entrants':'chip-blue','Stagiaires':'chip-green','Indispo phys.':'chip-red','Temps partiel':'chip-gray','TPT':'chip-gray','Congé parental':'chip-gray','Cartes séjour':'chip-orange','Maternité':'chip-yellow','AT':'chip-red','CDI':'chip-green','Stag. conv.':'chip-green','Comité méd.':'chip-red'};
   const srcCount={};allAlerts.forEach(a=>{srcCount[a.source]=(srcCount[a.source]||0)+1});
   const srcE=Object.entries(srcCount).sort((a,b)=>b[1]-a[1]);const maxSrc=srcE[0]?srcE[0][1]:1;
   const poleCount={};DB['tdb_dispo'].forEach(d=>{poleCount[d.pole]=(poleCount[d.pole]||0)+1});
@@ -2208,7 +2351,7 @@ function renderWidget(w,allAlerts,nExp,nCrit,nWarn,nSoon,srcTags,srcE,maxSrc,pol
   // Recent records widgets — unified map: id → {db, view, schema}
   const RECENT_CFG={
     recentPaye:     {db:()=>'paye_'+currentMonth, view:'paye',        schema:'paye'},
-    recentN1:       {db:'paye_N1',                view:'n1',          schema:'paye'},
+    recentN1:       {db:'paye_N1',                view:'n1',          schema:'n1'},
     recentCdd:      {db:'tdb_cdd',                view:'cdd',         schema:'cdd'},
     recentCnp:      {db:'tdb_cnp',                view:'cnp',         schema:'cnp'},
     recentStagiaires:{db:'tdb_stagiaires',         view:'stagiaires',  schema:'stagiaires'},
@@ -2296,7 +2439,7 @@ function renderImpChip(v){
   return`<span class="imp-chip imp-normal">${v}</span>`;
 }
 
-function setAlertFilter(f){alertFilter=f;const today=new Date();const all=getAlerts(today);const st={'Disponibilités':'chip-blue','CDD':'chip-orange','CNP':'chip-orange','Apprentis':'chip-purple','Experts':'chip-blue','Détach. sortants':'chip-blue','Détach. entrants':'chip-blue','Stagiaires':'chip-green','Indispo phys.':'chip-red','Temps partiel':'chip-gray','TPT':'chip-gray','Congé parental':'chip-gray','Cartes séjour':'chip-orange'};const el=document.getElementById('alerts-list');if(el)el.innerHTML=renderAlertsList(all,st);}
+function setAlertFilter(f){alertFilter=f;const today=new Date();const all=getAlerts(today);const st={'Disponibilités':'chip-blue','CDD':'chip-orange','CNP':'chip-orange','Apprentis':'chip-purple','Experts':'chip-blue','Détach. sortants':'chip-blue','Détach. entrants':'chip-blue','Stagiaires':'chip-green','Indispo phys.':'chip-red','Temps partiel':'chip-gray','TPT':'chip-gray','Congé parental':'chip-gray','Cartes séjour':'chip-orange','Maternité':'chip-yellow','AT':'chip-red','CDI':'chip-green','Stag. conv.':'chip-green','Comité méd.':'chip-red'};const el=document.getElementById('alerts-list');if(el)el.innerHTML=renderAlertsList(all,st);}
 function goToRecord(view,id){const nav=document.querySelector(`[data-view="${view}"]`);setView(view,nav);setTimeout(()=>{const r=document.querySelector(`tr[data-id="${id}"]`);if(r){r.scrollIntoView({behavior:'smooth',block:'center'});r.classList.add('selected')}},120);}
 
 // ═══════════════════════════════════════════════════════════
@@ -2830,7 +2973,8 @@ function renderAdminColumns(){
 function renderTableColEditor(t){
   const customCols=(ADMIN.customCols[t.key]||[]).filter(c=>!c.isDynamic);
   const baseCols=t.key==='paye_'?PAYE_COLS_BASE:t.key==='paye_N1'?N1_COLS:TDB_MAP_BASE[t.key]?TDB_MAP_BASE[t.key].cols:[];
-  const schema=Object.values(SCHEMAS_BASE).find(s=>s.title===ALL_TABLES.find(x=>x.key===t.key)?.label?.split(' (')[0]);
+  const schemaKey=t.key==='paye_'?'paye':t.key==='paye_N1'?'n1':t.key.startsWith('tdb_')?t.key.slice(4):t.key;
+  const schema=SCHEMAS_BASE[schemaKey];
   const fieldMap={};if(schema)schema.fields.forEach(f=>fieldMap[f.key]=f.label);
   const allCols=[...baseCols,...customCols.map(c=>c.key)];
   const visibleCols=ADMIN.visibleCols[t.key]||allCols;
@@ -3573,6 +3717,8 @@ function renderAdminSettings(){
       </div>`;
     }).join('')}
   </div>
+  <div class="admin-section">
+    <div class="admin-section-title">📂 Fichiers mémorisés</div>
     ${['paye','tdb'].map(w=>{
       const meta=JSON.parse(localStorage.getItem('grh_file_'+w)||'null');
       return`<div class="admin-row">
