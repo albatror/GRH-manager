@@ -466,14 +466,14 @@ const TDB_MAP_BASE={
   tdb_mater:       {sheet:'MATER',                 cols:['pole','matricule','nom','prenom','statut','datePrevue','dateReelle','grossessePatho','dateDebutArret','dateFinArret','arreteFait','saisieAstre','acteNaissance','couchesPatho','arreteModif','signalIJSS','envoiFormulaire','suppressionTransport','observations']},
   tdb_parental:    {sheet:'PARENTAL',              cols:['matricule','nom','prenom','grade','positionAdmin','dateDebutPos','dateFinPos','codeGestion','pole','service','observations']},
   tdb_indispo:     {sheet:'INDISPO PHYSIQUE',      cols:['pole','matricule','nom','prenom','positionAdmin','dateDebut','dateFin','dateRelance','demandeAgentRecep','motifDemande','conseilMedical','dateExpertise','observations']},
-  tdb_tpartiel:    {sheet:'TPARTIEL',              cols:['matricule','nom','prenom','statut','grade','quotite','typeTP','dateDebut','dateFin','pole','service','observations']},
+  tdb_tpartiel:    {sheet:'TPARTIEL',              cols:['matricule','nom','prenom','statut','grade','quotite','typeTP','dateDebut','dateFinPos','pole','service','observations']},
   tdb_sejour:      {sheet:'Carte Sejour',          cols:['matricule','nom','prenom','statut','nationalite','numeroCarte','dateExpiration','pole','service']},
   tdb_tpt:         {sheet:'TPT',                   cols:['matricule','nom','prenom','positionAdmin','tauxRemuneration','coeffTaux','codeTpt','typeTPT','date1erTPT','dateDebut','dateFin','pole','service']},
   tdb_at:          {sheet:'AT',                    cols:['matricule','nom','prenom','typeAT','dateAT','arretTravail','dateDebutArret','dateFinArret','soins','dateDebutSoins','dateFinSoins','dateExpertise','avisMedecinExpert','saisineCommission','dateCommission','imputabilite','transmissionFinal','observations']},
   tdb_cdi:         {sheet:'CDI',                   cols:['matricule','nom','prenom','age','ventilBudget','statut','typeContrat','motifCode','motifLibelle','grade','dateEntree','date1erContrat','dateDebut','echeance3ans','echeance6ans','pole','service']},
-  tdb_stag_conv:   {sheet:'STAGIAIRE CONVENTIONNE',cols:['pole','service','matricule','nom','prenom','dateDebutStage','dateFinStage','organisme']},
-  tdb_comite_med:  {sheet:'COMITE MEDIC',          cols:['nom','prenom','positionActuelle','date1erSaisie','dateDebut','dateFin','observation']},
-  tdb_retraite:    {sheet:'RETRAITE',              cols:['matricule','nom','nomPatronymique','prenom','dateNaissance','age','ageEn2025','limiteAge','grade','categorieAgent','codeGestion','observation']},
+  tdb_stag_conv:   {sheet:'STAGIAIRE CONVENTIONNE',cols:['matricule','nom','prenom','dateDebutStage','dateFinStage','service','observations']},
+  tdb_comite_med:  {sheet:'COMITE MEDICAL',        cols:['nom','prenom','positionActuelle','date1erSaisie','dateDebut','dateFin','observations']},
+  tdb_retraite:    {sheet:'RETRAITE',              cols:['matricule','nom','nomPatronymique','prenom','dateNaissance','age','ageEn2025','limiteAge','grade','categorieAgent','codeGestion','observations']},
   tdb_agent60:     {sheet:'AGENT > 60 ANS',        cols:['matricule','nom','prenom','numInsee','dateNaissance','age2024','statut','grade','codeGestion','pole','service']},
 };
 
@@ -618,10 +618,10 @@ const SCHEMAS_BASE={
     {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
     {key:'statut',label:'Statut',type:'text'},{key:'grade',label:'Grade',type:'text'},
     {key:'quotite',label:'Quotité',type:'text'},{key:'typeTP',label:'Type TP',type:'text'},
-    {key:'dateDebut',label:'Date début',type:'date'},{key:'dateFin',label:'Date fin',type:'date'},
+    {key:'dateDebut',label:'Date début',type:'date'},{key:'dateFinPos',label:'Date fin',type:'date'},
     {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'},
     {key:'observations',label:'Observations',type:'textarea',full:true}],
-    cols:['nom','prenom','grade','quotite','typeTP','dateDebut','dateFin','pole']},
+    cols:['nom','prenom','grade','quotite','typeTP','dateDebut','dateFinPos','pole']},
   sejour:{title:'Cartes de séjour',fields:[
     {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
     {key:'statut',label:'Statut',type:'text'},{key:'nationalite',label:'Nationalité',type:'text'},
@@ -663,18 +663,18 @@ const SCHEMAS_BASE={
     {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'}],
     cols:['nom','prenom','grade','statut','dateEntree','dateDebut','echeance3ans','echeance6ans','pole']},
   stag_conv:{title:'Stagiaires conventionnés',fields:[
-    {key:'pole',label:'Pôle',type:'select',options:POLES},{key:'service',label:'Service',type:'text'},
     {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
     {key:'dateDebutStage',label:'Date début stage',type:'date'},{key:'dateFinStage',label:'Date fin stage',type:'date'},
-    {key:'organisme',label:'Organisme',type:'text'}],
-    cols:['nom','prenom','pole','service','dateDebutStage','dateFinStage','organisme']},
+    {key:'service',label:'Service',type:'text'},
+    {key:'observations',label:'Observations',type:'textarea',full:true}],
+    cols:['nom','prenom','service','dateDebutStage','dateFinStage']},
   comite_med:{title:'Comité médical',fields:[
     {key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
     {key:'positionActuelle',label:'Position actuelle',type:'text'},
     {key:'date1erSaisie',label:'Date 1ère saisie ASTRE',type:'date'},
     {key:'dateDebut',label:'Date de début en cours',type:'date'},
     {key:'dateFin',label:'Date de fin en cours',type:'date'},
-    {key:'observation',label:'Observation',type:'textarea',full:true}],
+    {key:'observations',label:'Observations',type:'textarea',full:true}],
     cols:['nom','prenom','positionActuelle','date1erSaisie','dateDebut','dateFin']},
   retraite:{title:'Retraite',fields:[
     {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},
@@ -682,7 +682,7 @@ const SCHEMAS_BASE={
     {key:'dateNaissance',label:'Date de naissance',type:'date'},{key:'age',label:'Âge',type:'number'},
     {key:'ageEn2025',label:'Âge en 2025',type:'number'},{key:'limiteAge',label:"Limite d'âge",type:'text'},
     {key:'grade',label:'Grade',type:'text'},{key:'categorieAgent',label:'Catégorie agent',type:'text'},
-    {key:'codeGestion',label:'Code gestion',type:'text'},{key:'observation',label:'Observation',type:'textarea',full:true}],
+    {key:'codeGestion',label:'Code gestion',type:'text'},{key:'observations',label:'Observations',type:'textarea',full:true}],
     cols:['nom','prenom','grade','dateNaissance','age','ageEn2025','limiteAge','codeGestion']},
   agent60:{title:'Agents > 60 ans',fields:[
     {key:'matricule',label:'Matricule',type:'text'},{key:'nom',label:'Nom',type:'text'},{key:'prenom',label:'Prénom',type:'text'},
@@ -926,20 +926,22 @@ const HEADER_ALIASES = {
   dateImpact:       ['dateimpact'],
 
   // ── DATES CONTRAT (génériques) ────────────────────────────
-  dateDebut:        ['datedebutducontrat','datedebutcontratencours','debutcontratencours','datedebutcontrat',
-                     'datedebutducontrat','datedebuttempspartielencours',
+  dateDebut:        ['datedebutducontrat','datededebutducontrat','datedebutcontratencours','datededebutcontratencours',
+                     'debutcontratencours','datedebutcontrat',
+                     'datedebuttempspartielencours',
                      'datedebutdispoencours','datedebutclmcldencours',
                      'datedebutpositionadministrativeencours',
-                     'datedebutdetachement','datedebutarret',
-                     'datedebuttpten cours','datedebutdisponibilite',
+                     'datedebutdetachement','datededebutdetachement','datedebutarret',
+                     'datedebuttptencours','datedebutdisponibilite',
                      'datedebutencours','datededebutencours'],
-  dateFin:          ['datefinducontrat','datedefincontratencours',
+  dateFin:          ['datefinducontrat','datedefinducontrat','datedefincontratencours',
                      'fincontratencours','datefincontratencours','datefincontrat',
                      'datefintempspartielencours','datefinclmcldencours',
                      'datefindetachement','datefinpositionadministrativeencours',
                      'datefinpositionadministrative',
                      'datefindisp','fincontrat',
-                     'datefinencours','datedefinencours'],
+                     'datefinencours','datedefinencours',
+                     'datefintptencours'],
   date1erContrat:   ['datedu1ercontratsaisidansastre','1ercddsaisidansastre',
                      '1ercddsaisi','datedu1ercontrat','date1ercontrat',
                      '1ercontratsaisidansastre','datedupremiercontrat',
@@ -981,7 +983,7 @@ const HEADER_ALIASES = {
                      'datefinpositionadm','datefinposadm',
                      'datedeFinpositionadministrative'],
   dateDebutSit:     ['dateDedebutsituationadministrative','datededebutsituationadministrative',
-                     'datedebutsituationadministrative'],
+                     'datedebutsituationadministrative','datededebutsituadministrative'],
   dateFinSit:       ['datedefinsituadministrative','dateDeFinsituationadministrative','datefinsituationadministrative'],
   gestion:          ['gestionlibelle','gestion(libelle)','gestion'],
 
@@ -991,7 +993,7 @@ const HEADER_ALIASES = {
                      'datedenominationdanslegrade','datenomination',
                      'datedenominationdanslegrade'],
   dateAnciennete:   ['dateanciennetedanslegrade','dateanciennete',
-                     'dateDAncienneteDansLeGrade'],
+                     'dateDAncienneteDansLeGrade','datedanciennetedanslegrade'],
   codeDet:          ['codedetachement','codetachement'],
   orgAccueil:       ['organismedaccueil','orgaccueil'],
   orgOrigine:       ['organismedorigine','orgorigine'],
@@ -1231,7 +1233,7 @@ function sheetToRecords(ws, colKeys, tableKey, dataFirstRow) {
   const customColsAdmin = tableKey ? (ADMIN.customCols[tableKey]||[]) : [];
   // Mapper la colonne IMPORTANCE vers _importance si présente dans l'en-tête Excel
   headerRow.forEach((h, idx) => {
-    if(!colMap[idx] && normalizeHeader(String(h||'')) === 'importance') colMap[idx] = '_importance';
+    if(!colMap[idx] && (normalizeHeader(String(h||'')) === 'importance' || normalizeHeader(String(h||'')) === 'imporance')) colMap[idx] = '_importance';
   });
   customColsAdmin.forEach(c => {
     if(!c.isDynamic && !mappedKeys.has(c.key)) {
@@ -1738,7 +1740,7 @@ function getWriteColKeysFromWb(wb, sheetName){
     const hStr=String(h||'').replace(/\n/g,' ').trim();
     if(!hStr){writeKeys.push('_empty_col_'+idx);return;}
     const norm=normalizeHeader(hStr);
-    if(norm==='importance'){
+    if(norm==='importance'||norm==='imporance'){
       writeKeys.push('_importance');
       if(!usedKeys.has('_importance')) usedKeys.add('_importance');
       resolvedCount++;return;
@@ -2312,7 +2314,7 @@ function collectAllAlerts(today){
   DB['tdb_detach_entr'].forEach(r=>push('Détach. entrants','detach-entr',r.id,r.nom,r.prenom,r.pole,'Fin détachement',r.dateFin,diff(r.dateFin),r._importance));
   DB['tdb_stagiaires'].forEach(r=>{push('Stagiaires','stagiaires',r.id,r.nom,r.prenom,r.pole,'Titularisation',r.titularisation,diff(r.titularisation),r._importance);const dE=diff(r.dateEnvoiECS);if(dE!==null&&dE<60&&!r.dateReceptionECS)push('Stagiaires','stagiaires',r.id,r.nom,r.prenom,r.pole,'Envoi ECS',r.dateEnvoiECS,dE,r._importance);});
   DB['tdb_indispo'].forEach(r=>{push('Indispo phys.','indispo',r.id,r.nom,r.prenom,r.pole,'Fin CLM/CLD',r.dateFin,diff(r.dateFin),r._importance);push('Indispo phys.','indispo',r.id,r.nom,r.prenom,r.pole,'Relance agent',r.dateRelance,diff(r.dateRelance),r._importance);});
-  DB['tdb_tpartiel'].forEach(r=>push('Temps partiel','tpartiel',r.id,r.nom,r.prenom,r.pole,'Fin TP',r.dateFin,diff(r.dateFin),r._importance));
+  DB['tdb_tpartiel'].forEach(r=>push('Temps partiel','tpartiel',r.id,r.nom,r.prenom,r.pole,'Fin TP',r.dateFinPos,diff(r.dateFinPos),r._importance));
   DB['tdb_tpt'].forEach(r=>push('TPT','tpt',r.id,r.nom,r.prenom,r.pole,'Fin TPT',r.dateFin,diff(r.dateFin),r._importance));
   DB['tdb_parental'].forEach(r=>push('Congé parental','parental',r.id,r.nom,r.prenom,r.pole,'Fin congé',r.dateFin,diff(r.dateFin),r._importance));
   DB['tdb_sejour'].forEach(r=>push('Cartes séjour','sejour',r.id,r.nom,r.prenom,r.pole,'Expiration carte',r.dateExpiration,diff(r.dateExpiration),r._importance));
