@@ -1661,15 +1661,15 @@ function rewriteSheetXml(sheetXml, records, colKeys, dataStartRow, strings, colL
           const epoch=Date.UTC(1900,0,1);
           let serial=Math.round((utcMs-epoch)/86400000)+1;
           if(serial>=60) serial++; // compenser le bug Excel du 29/02/1900
-          return`<c r="${ref}" s="${s}" t="n"><v>${serial}</v></c>`;
+          return`<c r="${ref}" s="${s}"><v>${serial}</v></c>`;
         }
       }
-      // Nombre (type JS natif)
-      if(typeof raw==='number')
-        return`<c r="${ref}" s="${s}" t="n"><v>${raw}</v></c>`;
+      // Nombre (type JS natif) — ne pas écrire t="n" (le type numérique est la valeur par défaut)
+      if(typeof raw==='number'&&isFinite(raw))
+        return`<c r="${ref}" s="${s}"><v>${raw}</v></c>`;
       // Chaîne numérique pour colonnes marquées numériques (ex: matricule)
       if(numericKeys&&numericKeys.has(colKeys[ci])&&typeof raw==='string'&&/^\d+$/.test(raw)&&raw.length>0&&!raw.startsWith('0'))
-        return`<c r="${ref}" s="${s}" t="n"><v>${parseInt(raw,10)}</v></c>`;
+        return`<c r="${ref}" s="${s}"><v>${parseInt(raw,10)}</v></c>`;
 
       // Chaîne → sharedStrings
       const idx=getOrAdd(String(raw),strings);
@@ -1844,24 +1844,41 @@ async function getSheetTablePaths(zip,sheetPath){
 // Met à jour le XML d'une table Excel : plage (ref) + nouvelles colonnes si besoin
 function updateTableXml(tableXml,lastCol,lastRow,extraColLabels){
   const refVal=`A1:${lastCol}${Math.max(lastRow,1)}`;
-  let r=tableXml.replace(/((?:table|autoFilter)[^>]+\s)ref="[^"]*"/g,`$1ref="${refVal}"`);
+  // Remplacer TOUS les attributs ref="CellRange" (sur <table> et <autoFilter>)
+  // On utilise un pattern simple sur les plages de cellules plutôt qu'un pattern dépendant
+  // du contexte, car <autoFilter> n'a souvent aucun autre attribut avant ref=
+  let r=tableXml.replace(/\bref="[A-Z]+\d+:[A-Z]+\d+"/g,`ref="${refVal}"`);
   const existingCount=(tableXml.match(/<tableColumn[\s/]/g)||[]).length;
   // Calculer le nombre total de colonnes couvert par la nouvelle ref
   let totalCols=0;
   for(const c of lastCol.toUpperCase()) totalCols=totalCols*26+(c.charCodeAt(0)-64);
   if(extraColLabels&&extraColLabels.length>0){
+    // Cas : nouvelles colonnes à ajouter (ex: colonne IMPORTANCE ou custom ajoutée)
     const newTotal=existingCount+extraColLabels.length;
     r=r.replace(/(<tableColumns\b[^>]*\bcount=)"(\d+)"/,`$1"${newTotal}"`);
     const newCols=extraColLabels.map((lbl,i)=>`<tableColumn id="${existingCount+i+1}" name="${xmlEsc(lbl)}"/>`).join('');
     r=r.replace('</tableColumns>',newCols+'</tableColumns>');
-  } else if(totalCols>existingCount){
-    // La ref couvre plus de colonnes que ce qui est défini : ajouter les manquantes
-    const newCols=[];
-    for(let i=existingCount;i<totalCols;i++){
-      newCols.push(`<tableColumn id="${i+1}" name="Column${i+1}"/>`);
+  } else if(totalCols!==existingCount){
+    // Cas : le nombre de colonnes écrites diffère des colonnes définies dans la table
+    // (plus ou moins) → reconstruire les définitions de colonnes pour éviter la corruption
+    if(totalCols>existingCount){
+      // Ajouter les colonnes manquantes
+      const newCols=[];
+      for(let i=existingCount;i<totalCols;i++){
+        newCols.push(`<tableColumn id="${i+1}" name="Column${i+1}"/>`);
+      }
+      r=r.replace(/(<tableColumns\b[^>]*\bcount=)"(\d+)"/,`$1"${totalCols}"`);
+      r=r.replace('</tableColumns>',newCols.join('')+'</tableColumns>');
+    } else {
+      // totalCols < existingCount : supprimer les colonnes en surplus
+      // Garder uniquement les N premiers <tableColumn> et mettre à jour count
+      let kept=0;
+      r=r.replace(/<tableColumn[\s/][^>]*\/>/g,m=>{
+        kept++;
+        return kept<=totalCols?m:'';
+      });
+      r=r.replace(/(<tableColumns\b[^>]*\bcount=)"(\d+)"/,`$1"${totalCols}"`);
     }
-    r=r.replace(/(<tableColumns\b[^>]*\bcount=)"(\d+)"/,`$1"${totalCols}"`);
-    r=r.replace('</tableColumns>',newCols.join('')+'</tableColumns>');
   }
   return r;
 }
