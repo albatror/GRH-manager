@@ -1843,7 +1843,7 @@ async function getSheetTablePaths(zip,sheetPath){
 
 // Met à jour le XML d'une table Excel : plage (ref) + nouvelles colonnes si besoin
 function updateTableXml(tableXml,lastCol,lastRow,extraColLabels){
-  const origRef=tableXml.match(/\bref="([A-Z]+\d+):[A-Z]+\d+"/);
+  const origRef=tableXml.match(/\bref="([A-Z]+\d+):([A-Z]+)\d+"/);
   const startCell=origRef?origRef[1]:'A1';
   const refVal=`${startCell}:${lastCol}${Math.max(lastRow,1)}`;
   // Remplacer TOUS les attributs ref="CellRange" (sur <table> et <autoFilter>)
@@ -1872,14 +1872,13 @@ function updateTableXml(tableXml,lastCol,lastRow,extraColLabels){
       r=r.replace(/(<tableColumns\b[^>]*\bcount=)"(\d+)"/,`$1"${totalCols}"`);
       r=r.replace('</tableColumns>',newCols.join('')+'</tableColumns>');
     } else {
-      // totalCols < existingCount : supprimer les colonnes en surplus
-      // Garder uniquement les N premiers <tableColumn> et mettre à jour count
-      let kept=0;
-      r=r.replace(/<tableColumn[\s/][^>]*\/>/g,m=>{
-        kept++;
-        return kept<=totalCols?m:'';
-      });
-      r=r.replace(/(<tableColumns\b[^>]*\bcount=)"(\d+)"/,`$1"${totalCols}"`);
+      // totalCols < existingCount : colonnes formule/calculées présentes dans la table Excel
+      // Ne pas supprimer les colonnes supplémentaires — count incorrect sinon si certaines
+      // sont non auto-fermantes (calculatedColumnFormula). Préserver la définition complète
+      // et ne mettre à jour que le nombre de lignes dans le ref.
+      const origLastCol=origRef?origRef[2]:idxToCol(existingCount-1);
+      const preservedRefVal=`${startCell}:${origLastCol}${Math.max(lastRow,1)}`;
+      return tableXml.replace(/\bref="[A-Z]+\d+:[A-Z]+\d+"/g,`ref="${preservedRefVal}"`);
     }
   }
   return r;
