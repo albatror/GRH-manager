@@ -1841,47 +1841,21 @@ async function getSheetTablePaths(zip,sheetPath){
   return paths;
 }
 
-// Met à jour le XML d'une table Excel : plage (ref) + nouvelles colonnes si besoin
-function updateTableXml(tableXml,lastCol,lastRow,extraColLabels){
-  const origRef=tableXml.match(/\bref="([A-Z]+\d+):([A-Z]+)\d+"/);
-  const startCell=origRef?origRef[1]:'A1';
+// Met à jour UNIQUEMENT l'attribut ref du tableau et de l'autoFilter.
+// NE MODIFIE PAS les définitions de colonnes pour préserver les colonnes avec calculatedColumnFormula.
+function updateTableXml(tableXml,lastCol,lastRow){
+  // Trouver le ref original du tableau (dans l'attribut du tag <table> lui-même)
+  const tableRefMatch=tableXml.match(/<table[^>]+ref="([A-Z]+\d+):([A-Z]+)\d+"/);
+  const startCell=tableRefMatch?tableRefMatch[1]:'A1';
   const refVal=`${startCell}:${lastCol}${Math.max(lastRow,1)}`;
-  // Remplacer TOUS les attributs ref="CellRange" (sur <table> et <autoFilter>)
-  // On utilise un pattern simple sur les plages de cellules plutôt qu'un pattern dépendant
-  // du contexte, car <autoFilter> n'a souvent aucun autre attribut avant ref=
-  let r=tableXml.replace(/\bref="[A-Z]+\d+:[A-Z]+\d+"/g,`ref="${refVal}"`);
-  const existingCount=(tableXml.match(/<tableColumn[\s/]/g)||[]).length;
-  // Calculer le nombre total de colonnes couvert par la nouvelle ref
-  let totalCols=0;
-  for(const c of lastCol.toUpperCase()) totalCols=totalCols*26+(c.charCodeAt(0)-64);
-  if(extraColLabels&&extraColLabels.length>0){
-    // Cas : nouvelles colonnes à ajouter (ex: colonne IMPORTANCE ou custom ajoutée)
-    const newTotal=existingCount+extraColLabels.length;
-    r=r.replace(/(<tableColumns\b[^>]*\bcount=)"(\d+)"/,`$1"${newTotal}"`);
-    const newCols=extraColLabels.map((lbl,i)=>`<tableColumn id="${existingCount+i+1}" name="${xmlEsc(lbl)}"/>`).join('');
-    r=r.replace('</tableColumns>',newCols+'</tableColumns>');
-  } else if(totalCols!==existingCount){
-    // Cas : le nombre de colonnes écrites diffère des colonnes définies dans la table
-    // (plus ou moins) → reconstruire les définitions de colonnes pour éviter la corruption
-    if(totalCols>existingCount){
-      // Ajouter les colonnes manquantes
-      const newCols=[];
-      for(let i=existingCount;i<totalCols;i++){
-        newCols.push(`<tableColumn id="${i+1}" name="Column${i+1}"/>`);
-      }
-      r=r.replace(/(<tableColumns\b[^>]*\bcount=)"(\d+)"/,`$1"${totalCols}"`);
-      r=r.replace('</tableColumns>',newCols.join('')+'</tableColumns>');
-    } else {
-      // totalCols < existingCount : colonnes formule/calculées présentes dans la table Excel
-      // Ne pas supprimer les colonnes supplémentaires — count incorrect sinon si certaines
-      // sont non auto-fermantes (calculatedColumnFormula). Préserver la définition complète
-      // et ne mettre à jour que le nombre de lignes dans le ref.
-      const origLastCol=origRef?origRef[2]:idxToCol(existingCount-1);
-      const preservedRefVal=`${startCell}:${origLastCol}${Math.max(lastRow,1)}`;
-      return tableXml.replace(/\bref="[A-Z]+\d+:[A-Z]+\d+"/g,`ref="${preservedRefVal}"`);
-    }
-  }
-  return r;
+
+  // Ne modifier que les attributs ref sur <table> et <autoFilter>
+  // Ne pas toucher aux ref à l'intérieur de calculatedColumnFormula
+  const result=tableXml
+    .replace(/(<table[^>]*)\bref="[A-Z]+\d+:[A-Z]+\d+"/,`$1ref="${refVal}"`)
+    .replace(/(<autoFilter[^>]*)\bref="[A-Z]+\d+:[A-Z]+\d+"/,`$1ref="${refVal}"`);
+
+  return result;
 }
 
 // ─── SAUVEGARDE PRINCIPALE ────────────────────────────────
@@ -1915,7 +1889,7 @@ async function saveAllFiles(){
             const txml=await zipPaye.files[tp].async('text');
             const tblColCount=(txml.match(/<tableColumn[\s/]/g)||[]).length;
             const extraLabels=payeColLabels.slice(tblColCount);
-            zipPaye.file(tp,updateTableXml(txml,idxToCol(payeColKeys.length-1),1+recs.length,extraLabels.length?extraLabels:null));
+            zipPaye.file(tp,updateTableXml(txml,idxToCol(payeColKeys.length-1),1+recs.length));
           }
         }
         // N+1 (en-têtes ligne 1, lignes 2-3 vides pour style, données à partir de la ligne 4)
@@ -1932,7 +1906,7 @@ async function saveAllFiles(){
             const txml=await zipPaye.files[tp].async('text');
             const tblColCount=(txml.match(/<tableColumn[\s/]/g)||[]).length;
             const extraLabels=n1ColLabels.slice(tblColCount);
-            zipPaye.file(tp,updateTableXml(txml,idxToCol(n1ColKeys.length-1),3+n1Recs.length,extraLabels.length?extraLabels:null));
+            zipPaye.file(tp,updateTableXml(txml,idxToCol(n1ColKeys.length-1),3+n1Recs.length));
           }
         }
         // Supprimer calcChain (Excel le regénère proprement à l'ouverture)
@@ -1971,7 +1945,7 @@ async function saveAllFiles(){
             const txml=await zipTdb.files[tp].async('text');
             const tblColCount=(txml.match(/<tableColumn[\s/]/g)||[]).length;
             const extraLabels=tdbColLabels.slice(tblColCount);
-            zipTdb.file(tp,updateTableXml(txml,idxToCol(tdbColKeys.length-1),1+recs.length,extraLabels.length?extraLabels:null));
+            zipTdb.file(tp,updateTableXml(txml,idxToCol(tdbColKeys.length-1),1+recs.length));
           }
         }
         // Supprimer calcChain (Excel le regénère proprement à l'ouverture)
