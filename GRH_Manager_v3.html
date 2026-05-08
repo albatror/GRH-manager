@@ -255,7 +255,7 @@ tbody td:first-child{font-family:var(--mono);font-size:10.5px;color:var(--text-m
   <div id="sidebar">
     <div id="sb-head">
       <h1>GRH Manager</h1>
-      <p>Paye · Tableau de Bord <span style="font-size:9px;opacity:.5">fix-tables-v12</span></p>
+      <p>Paye · Tableau de Bord <span style="font-size:9px;opacity:.5">fix-tables-v13</span></p>
     </div>
     <div id="sb-files">
       <div class="file-btn" id="fb-paye" onclick="pickFile('paye')">
@@ -1903,54 +1903,10 @@ function updateTableXml(tableXml,lastCol,lastRow,extraColLabels){
       r=r.replace(/(<tableColumns\b[^>]*\bcount=)"(\d+)"/,`$1"${totalCols}"`);
     }
   }
+  // Renumber column IDs sequentially (1, 2, …) — non-sequential IDs (e.g. swapped 17/18) cause Excel repair
+  let seqId=0;
+  r=r.replace(/<tableColumn\b[^>]*/g,m=>{seqId++;return m.replace(/\bid="[^"]*"/,`id="${seqId}"`);});
   return r;
-}
-
-// Reconstruit proprement un fichier table XML pour les tableaux TDB.
-// Génère des IDs séquentiels (1…N), supprime toute corruption accumulée et les namespaces xr/xr3.
-// Préserve : id du tableau, nom, displayName, formats (dxfId), style.
-// allColLabels : labels dans l'ordre des colonnes (utilisé pour les nouvelles colonnes sans nom existant).
-function rebuildCleanTableXml(existingTableXml, lastCol, lastRow, allColLabels){
-  let nCols=0;
-  for(const c of lastCol.toUpperCase()) nCols=nCols*26+(c.charCodeAt(0)-64);
-  const refVal=`A1:${lastCol}${Math.max(lastRow,2)}`;
-
-  const tTag=existingTableXml.match(/<table\b[^>]*>/)?.[0]||'';
-  const getAttr=(attr)=>(tTag.match(new RegExp(`\\b${attr}="([^"]+)"`))??[])[1]||'';
-  const tblId=getAttr('id')||'1';
-  const tblName=getAttr('name')||'Tableau';
-  const tblDispName=getAttr('displayName')||tblName;
-  const totalsRowShown=getAttr('totalsRowShown')||'0';
-  const fmtParts=['headerRowDxfId','dataDxfId','headerRowBorderDxfId','tableBorderDxfId','totalsRowBorderDxfId']
-    .map(a=>{const v=getAttr(a);return v?` ${a}="${v}"`:''}).join('');
-
-  // Extraire colonnes EN ORDRE POSITIONNEL (pas par id) — ignore <calculatedColumnFormula>
-  const existingCols=[];
-  const colRe=/<tableColumn\b([^>]*)(?:\/>|>[\s\S]*?<\/tableColumn>)/g;
-  let cm;
-  while((cm=colRe.exec(existingTableXml))!==null){
-    const attrs=cm[1];
-    existingCols.push({
-      name:(attrs.match(/\bname="([^"]+)"/)??[])[1]||'',
-      dxf:(attrs.match(/\bdataDxfId="(\d+)"/)??[])[1]||''
-    });
-  }
-
-  const styleXml=existingTableXml.match(/<tableStyleInfo\b[^/]*\/>/)?.[0]
-    ||'<tableStyleInfo name="TableStyleLight13" showFirstColumn="0" showLastColumn="0" showRowStripes="1" showColumnStripes="0"/>';
-
-  // IDs séquentiels propres : 1, 2, …, N — élimine tout désordre ou ID hors-plage
-  // Pour les colonnes sans nom existant (nouvelles colonnes), utiliser allColLabels
-  const colElems=Array.from({length:nCols},(_,i)=>{
-    const ex=existingCols[i];
-    const lbl=(ex&&ex.name)?ex.name:((allColLabels&&allColLabels[i])||`Column${i+1}`);
-    const dxf=(ex&&ex.dxf)?` dataDxfId="${ex.dxf}"`:'' ;
-    return`<tableColumn id="${i+1}" name="${xmlEsc(lbl)}"${dxf}/>`;
-  }).join('');
-
-  console.log(`[fix-tables-v12] rebuildCleanTableXml id=${tblId} name="${tblName}" nCols=${nCols} ref=${refVal}`);
-  const ns='xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
-  return`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<table ${ns} id="${tblId}" name="${xmlEsc(tblName)}" displayName="${xmlEsc(tblDispName)}" ref="${refVal}" totalsRowShown="${totalsRowShown}"${fmtParts}><autoFilter ref="${refVal}"/><tableColumns count="${nCols}">${colElems}</tableColumns>${styleXml}</table>`;
 }
 
 // ─── SAUVEGARDE PRINCIPALE ────────────────────────────────
@@ -2028,7 +1984,6 @@ async function saveAllFiles(){
           const path=nameToPath[sheet];
           if(!path||!zipTdb.files[path]) continue;
           const xml=await zipTdb.files[path].async('text');
-          // Utiliser l'ordre original des colonnes Excel pour éviter tout décalage et corruption
           const tdbColKeys=getWriteColKeysFromWb(wbTdb,sheet)||getEffectiveColsForSave(key);
           const tdbColLabels=getLabelsForColKeys(tdbColKeys,key);
           const tdbNumKeys=getNumericKeySet(key);
@@ -2037,8 +1992,9 @@ async function saveAllFiles(){
           for(const tp of await getSheetTablePaths(zipTdb,path)){
             if(!zipTdb.files[tp]) continue;
             const txml=await zipTdb.files[tp].async('text');
-            // Reconstruction propre : IDs séquentiels 1..N, pas de formule résiduelle, pas de namespace xr
-            zipTdb.file(tp,rebuildCleanTableXml(txml,idxToCol(tdbColKeys.length-1),1+recs.length,tdbColLabels));
+            const tblColCount=(txml.match(/<tableColumn[\s/]/g)||[]).length;
+            const extraLabels=tdbColLabels.slice(tblColCount);
+            zipTdb.file(tp,updateTableXml(txml,idxToCol(tdbColKeys.length-1),1+recs.length,extraLabels.length?extraLabels:null));
           }
         }
         // Supprimer calcChain (Excel le regénère proprement à l'ouverture)
