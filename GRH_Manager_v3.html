@@ -1877,48 +1877,80 @@ async function getSheetTablePaths(zip,sheetPath){
   return paths;
 }
 
-// Met à jour le ref ET synchronise count/<tableColumn> pour éviter la corruption Excel.
+// Met à jour le ref ET synchronise count/<tableColumn> pour les tableaux PAYE (approche légère).
 function updateTableXml(tableXml,lastCol,lastRow,extraColLabels){
-  const refVal=`A1:${lastCol}${Math.max(lastRow,2)}`; // min 2 lignes (en-tête + 1 donnée) exigé par OOXML
-  const _dbgRef=(tableXml.match(/\bref="([A-Z]+\d+:[A-Z]+\d+)"/)??[])[1]||'?';
-  console.log(`[fix-tables-v7] updateTableXml → ref: ${_dbgRef} → ${refVal}, lastCol=${lastCol}, lastRow=${lastRow}`);
-  // Remplacer tous les attributs ref (table + autoFilter) en une seule passe globale
+  const refVal=`A1:${lastCol}${Math.max(lastRow,2)}`;
   let r=tableXml.replace(/\bref="[A-Z]+\d+:[A-Z]+\d+"/g,`ref="${refVal}"`);
-  // Supprimer les formules calculées : GRH-Manager écrit des valeurs, pas des formules
-  // (cause d'invalidation par Excel si les cellules ne contiennent pas la formule attendue)
   r=r.replace(/<calculatedColumnFormula>[\s\S]*?<\/calculatedColumnFormula>/g,'');
-  // Convertir les tableColumn non-self-closing (vidés de leurs enfants) en éléments self-closing
   r=r.replace(/<tableColumn(\b[^>]*)>\s*<\/tableColumn>/g,'<tableColumn$1/>');
   const existingCount=(r.match(/<tableColumn[\s/]/g)||[]).length;
-  // Convertir lastCol lettre → nombre de colonnes
   let totalCols=0;
   for(const c of lastCol.toUpperCase()) totalCols=totalCols*26+(c.charCodeAt(0)-64);
-  console.log(`[fix-tables-v7] existingCount=${existingCount}, totalCols=${totalCols}, extraCols=${extraColLabels?.length??0}`);
   if(extraColLabels&&extraColLabels.length>0){
-    // Cas : nouvelles colonnes à ajouter (IMPORTANCE ou colonne custom)
     const newTotal=existingCount+extraColLabels.length;
-    console.log(`[fix-tables-v7] Adding ${extraColLabels.length} extra cols → count=${newTotal}`);
     r=r.replace(/(<tableColumns\b[^>]*\bcount=)"(\d+)"/,`$1"${newTotal}"`);
     const newCols=extraColLabels.map((lbl,i)=>`<tableColumn id="${existingCount+i+1}" name="${xmlEsc(lbl)}"/>`).join('');
     r=r.replace('</tableColumns>',newCols+'</tableColumns>');
   } else if(totalCols!==existingCount){
-    console.warn(`[fix-tables-v7] MISMATCH: ref implies ${totalCols} cols but table has ${existingCount} — fixing`);
     if(totalCols>existingCount){
-      // Ajouter les définitions de colonnes manquantes
       const newCols=[];
       for(let i=existingCount;i<totalCols;i++) newCols.push(`<tableColumn id="${i+1}" name="Column${i+1}"/>`);
       r=r.replace(/(<tableColumns\b[^>]*\bcount=)"(\d+)"/,`$1"${totalCols}"`);
       r=r.replace('</tableColumns>',newCols.join('')+'</tableColumns>');
     } else {
-      // Supprimer les colonnes auto-fermantes en surplus (les colonnes avec enfants sont préservées)
       let kept=0;
       r=r.replace(/<tableColumn[\s/][^>]*\/>/g,m=>{ kept++; return kept<=totalCols?m:''; });
       r=r.replace(/(<tableColumns\b[^>]*\bcount=)"(\d+)"/,`$1"${totalCols}"`);
     }
-  } else {
-    console.log(`[fix-tables-v7] count OK (${existingCount}) — seulement ref mis à jour`);
   }
   return r;
+}
+
+// Reconstruit proprement un fichier table XML pour les tableaux TDB.
+// Génère des IDs séquentiels (1…N), supprime toute corruption accumulée et les namespaces xr/xr3.
+// Préserve : id du tableau, nom, displayName, formats (dxfId), style.
+// allColLabels : labels dans l'ordre des colonnes (utilisé pour les nouvelles colonnes sans nom existant).
+function rebuildCleanTableXml(existingTableXml, lastCol, lastRow, allColLabels){
+  let nCols=0;
+  for(const c of lastCol.toUpperCase()) nCols=nCols*26+(c.charCodeAt(0)-64);
+  const refVal=`A1:${lastCol}${Math.max(lastRow,2)}`;
+
+  const tTag=existingTableXml.match(/<table\b[^>]*>/)?.[0]||'';
+  const getAttr=(attr)=>(tTag.match(new RegExp(`\\b${attr}="([^"]+)"`))??[])[1]||'';
+  const tblId=getAttr('id')||'1';
+  const tblName=getAttr('name')||'Tableau';
+  const tblDispName=getAttr('displayName')||tblName;
+  const totalsRowShown=getAttr('totalsRowShown')||'0';
+  const fmtParts=['headerRowDxfId','dataDxfId','headerRowBorderDxfId','tableBorderDxfId','totalsRowBorderDxfId']
+    .map(a=>{const v=getAttr(a);return v?` ${a}="${v}"`:''}).join('');
+
+  // Extraire colonnes EN ORDRE POSITIONNEL (pas par id) — ignore <calculatedColumnFormula>
+  const existingCols=[];
+  const colRe=/<tableColumn\b([^>]*)(?:\/>|>[\s\S]*?<\/tableColumn>)/g;
+  let cm;
+  while((cm=colRe.exec(existingTableXml))!==null){
+    const attrs=cm[1];
+    existingCols.push({
+      name:(attrs.match(/\bname="([^"]+)"/)??[])[1]||'',
+      dxf:(attrs.match(/\bdataDxfId="(\d+)"/)??[])[1]||''
+    });
+  }
+
+  const styleXml=existingTableXml.match(/<tableStyleInfo\b[^/]*\/>/)?.[0]
+    ||'<tableStyleInfo name="TableStyleLight13" showFirstColumn="0" showLastColumn="0" showRowStripes="1" showColumnStripes="0"/>';
+
+  // IDs séquentiels propres : 1, 2, …, N — élimine tout désordre ou ID hors-plage
+  // Pour les colonnes sans nom existant (nouvelles colonnes), utiliser allColLabels
+  const colElems=Array.from({length:nCols},(_,i)=>{
+    const ex=existingCols[i];
+    const lbl=(ex&&ex.name)?ex.name:((allColLabels&&allColLabels[i])||`Column${i+1}`);
+    const dxf=(ex&&ex.dxf)?` dataDxfId="${ex.dxf}"`:'' ;
+    return`<tableColumn id="${i+1}" name="${xmlEsc(lbl)}"${dxf}/>`;
+  }).join('');
+
+  console.log(`[fix-tables-v12] rebuildCleanTableXml id=${tblId} name="${tblName}" nCols=${nCols} ref=${refVal}`);
+  const ns='xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+  return`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<table ${ns} id="${tblId}" name="${xmlEsc(tblName)}" displayName="${xmlEsc(tblDispName)}" ref="${refVal}" totalsRowShown="${totalsRowShown}"${fmtParts}><autoFilter ref="${refVal}"/><tableColumns count="${nCols}">${colElems}</tableColumns>${styleXml}</table>`;
 }
 
 // ─── SAUVEGARDE PRINCIPALE ────────────────────────────────
@@ -2005,11 +2037,8 @@ async function saveAllFiles(){
           for(const tp of await getSheetTablePaths(zipTdb,path)){
             if(!zipTdb.files[tp]) continue;
             const txml=await zipTdb.files[tp].async('text');
-            const tblColCount=(txml.match(/<tableColumn[\s/]/g)||[]).length;
-            const extraLabels=tdbColLabels.slice(tblColCount);
-            const fixedTxml=updateTableXml(txml,idxToCol(tdbColKeys.length-1),1+recs.length,extraLabels.length?extraLabels:null);
-            console.log(`[fix-tables-v12] updateTableXml ${sheet}`);
-            zipTdb.file(tp,fixedTxml);
+            // Reconstruction propre : IDs séquentiels 1..N, pas de formule résiduelle, pas de namespace xr
+            zipTdb.file(tp,rebuildCleanTableXml(txml,idxToCol(tdbColKeys.length-1),1+recs.length,tdbColLabels));
           }
         }
         // Supprimer calcChain (Excel le regénère proprement à l'ouverture)
