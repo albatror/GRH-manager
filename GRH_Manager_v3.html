@@ -255,7 +255,7 @@ tbody td:first-child{font-family:var(--mono);font-size:10.5px;color:var(--text-m
   <div id="sidebar">
     <div id="sb-head">
       <h1>GRH Manager</h1>
-      <p>Paye · Tableau de Bord <span style="font-size:9px;opacity:.5">fix-tables-v5</span></p>
+      <p>Paye · Tableau de Bord <span style="font-size:9px;opacity:.5">fix-tables-v6</span></p>
     </div>
     <div id="sb-files">
       <div class="file-btn" id="fb-paye" onclick="pickFile('paye')">
@@ -1725,6 +1725,10 @@ function rewriteSheetXml(sheetXml, records, colKeys, dataStartRow, strings, colL
     }
   }
 
+  // Supprimer l'autoFilter autonome au niveau feuille : la table gère son propre autoFilter,
+  // avoir les deux avec des ref différentes corrompt le fichier Excel.
+  result = result.replace(/<autoFilter\b[^>]*\/>/g, '');
+
   return result;
 }
 
@@ -1901,6 +1905,52 @@ function updateTableXml(tableXml,lastCol,lastRow,extraColLabels){
   return r;
 }
 
+// Reconstruit un fichier table XML en partant de zéro à partir des métadonnées existantes.
+// Élimine toute corruption accumulée (formules calculées, IDs hors ordre, count erroné, etc.)
+function rebuildTableXml(existingTableXml, lastCol, lastRow, allColLabels){
+  let nCols=0;
+  for(const c of lastCol.toUpperCase()) nCols=nCols*26+(c.charCodeAt(0)-64);
+  const refVal=`A1:${lastCol}${Math.max(lastRow,2)}`;
+
+  // Extraire les métadonnées de l'élément <table>
+  const tTag=existingTableXml.match(/<table\b[^>]*>/)?.[0]||'';
+  const getAttr=(attr)=>(tTag.match(new RegExp(`\\b${attr}="([^"]+)"`))??[])[1]||'';
+  const tblId=getAttr('id')||'1';
+  const tblName=getAttr('name')||'Tableau';
+  const tblDispName=getAttr('displayName')||tblName;
+  const totalsRowShown=getAttr('totalsRowShown')||'0';
+  const fmtParts=['headerRowDxfId','dataDxfId','headerRowBorderDxfId','tableBorderDxfId','totalsRowBorderDxfId']
+    .map(a=>{const v=getAttr(a);return v?` ${a}="${v}"`:''}).join('');
+
+  // Extraire les définitions de colonnes existantes EN ORDRE DE SÉQUENCE (pas par id)
+  const existingCols=[];
+  const colRe=/<tableColumn\b([^>]*)(?:\/>|>[\s\S]*?<\/tableColumn>)/g;
+  let cm;
+  while((cm=colRe.exec(existingTableXml))!==null){
+    const attrs=cm[1];
+    existingCols.push({
+      name:(attrs.match(/\bname="([^"]+)"/)??[])[1]||'',
+      dxf:(attrs.match(/\bdataDxfId="(\d+)"/)??[])[1]||''
+    });
+  }
+
+  // Style du tableau
+  const styleXml=existingTableXml.match(/<tableStyleInfo\b[^/]*\/>/)?.[0]
+    ||'<tableStyleInfo name="TableStyleLight13" showFirstColumn="0" showLastColumn="0" showRowStripes="1" showColumnStripes="0"/>';
+
+  // Construire les éléments de colonnes : nom original en priorité, sinon label du schéma
+  const colElems=Array.from({length:nCols},(_,i)=>{
+    const ex=existingCols[i];
+    const lbl=(ex&&ex.name)?ex.name:((allColLabels&&allColLabels[i])||`Column${i+1}`);
+    const dxf=(ex&&ex.dxf)?` dataDxfId="${ex.dxf}"`:'' ;
+    return`<tableColumn id="${i+1}" name="${xmlEsc(lbl)}"${dxf}/>`;
+  }).join('');
+
+  console.log(`[fix-tables-v6] rebuildTableXml id=${tblId} name="${tblName}" nCols=${nCols} ref=${refVal} existingCols=${existingCols.length}`);
+  const ns='xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+  return`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<table ${ns} id="${tblId}" name="${xmlEsc(tblName)}" displayName="${xmlEsc(tblDispName)}" ref="${refVal}" totalsRowShown="${totalsRowShown}"${fmtParts}><autoFilter ref="${refVal}"/><tableColumns count="${nCols}">${colElems}</tableColumns>${styleXml}</table>`;
+}
+
 // ─── SAUVEGARDE PRINCIPALE ────────────────────────────────
 async function saveAllFiles(){
   const btn=document.getElementById('save-all-btn');
@@ -1986,9 +2036,8 @@ async function saveAllFiles(){
           for(const tp of await getSheetTablePaths(zipTdb,path)){
             if(!zipTdb.files[tp]) continue;
             const txml=await zipTdb.files[tp].async('text');
-            const tblColCount=(txml.match(/<tableColumn[\s/]/g)||[]).length;
-            const extraLabels=tdbColLabels.slice(tblColCount);
-            zipTdb.file(tp,updateTableXml(txml,idxToCol(tdbColKeys.length-1),1+recs.length,extraLabels.length?extraLabels:null));
+            // Reconstruire le XML de table depuis zéro pour éliminer toute corruption accumulée
+            zipTdb.file(tp,rebuildTableXml(txml,idxToCol(tdbColKeys.length-1),1+recs.length,tdbColLabels));
           }
         }
         // Supprimer calcChain (Excel le regénère proprement à l'ouverture)
