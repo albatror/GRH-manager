@@ -1877,10 +1877,19 @@ async function getSheetTablePaths(zip,sheetPath){
   return paths;
 }
 
-// Met à jour le ref ET synchronise count/<tableColumn> pour les tableaux PAYE (approche légère).
+// Met à jour le ref ET synchronise count/<tableColumn> pour les tableaux Excel.
 function updateTableXml(tableXml,lastCol,lastRow,extraColLabels){
   const refVal=`A1:${lastCol}${Math.max(lastRow,2)}`;
-  let r=tableXml.replace(/\bref="[A-Z]+\d+:[A-Z]+\d+"/g,`ref="${refVal}"`);
+  // Supprimer les attributs de suivi de révision Microsoft (xr, xr3, mc) AVANT toute
+  // modification des IDs de colonnes. Ces UIDs sont liés aux anciens IDs par Excel ; si on
+  // renumérote les colonnes en conservant les UIDs, Excel détecte une incohérence
+  // UID↔ID et déclenche le message "Enregistrements réparés: Tableau dans /xl/tables/tableN.xml".
+  // Supprimer ces attributs propriétaires produit un OOXML standard qu'Excel accepte sans réparation.
+  let r=tableXml
+    .replace(/\s+xmlns:(?:xr\d*|mc)="[^"]*"/g,'')
+    .replace(/\s+mc:Ignorable="[^"]*"/g,'')
+    .replace(/\s+xr\d*:[^\s=>"]+="[^"]*"/g,'');
+  r=r.replace(/\bref="[A-Z]+\d+:[A-Z]+\d+"/g,`ref="${refVal}"`);
   r=r.replace(/<calculatedColumnFormula>[\s\S]*?<\/calculatedColumnFormula>/g,'');
   r=r.replace(/<tableColumn(\b[^>]*)>\s*<\/tableColumn>/g,'<tableColumn$1/>');
   const existingCount=(r.match(/<tableColumn[\s/]/g)||[]).length;
