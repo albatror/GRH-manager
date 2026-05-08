@@ -255,7 +255,7 @@ tbody td:first-child{font-family:var(--mono);font-size:10.5px;color:var(--text-m
   <div id="sidebar">
     <div id="sb-head">
       <h1>GRH Manager</h1>
-      <p>Paye · Tableau de Bord</p>
+      <p>Paye · Tableau de Bord <span style="font-size:9px;opacity:.5">fix-tables-v2</span></p>
     </div>
     <div id="sb-files">
       <div class="file-btn" id="fb-paye" onclick="pickFile('paye')">
@@ -1844,19 +1844,24 @@ async function getSheetTablePaths(zip,sheetPath){
 // Met à jour le ref ET synchronise count/<tableColumn> pour éviter la corruption Excel.
 function updateTableXml(tableXml,lastCol,lastRow,extraColLabels){
   const refVal=`A1:${lastCol}${Math.max(lastRow,1)}`;
+  const _dbgRef=(tableXml.match(/\bref="([A-Z]+\d+:[A-Z]+\d+)"/)??[])[1]||'?';
+  console.log(`[fix-tables-v2] updateTableXml → ref: ${_dbgRef} → ${refVal}, lastCol=${lastCol}, lastRow=${lastRow}`);
   // Remplacer tous les attributs ref (table + autoFilter) en une seule passe globale
   let r=tableXml.replace(/\bref="[A-Z]+\d+:[A-Z]+\d+"/g,`ref="${refVal}"`);
   const existingCount=(tableXml.match(/<tableColumn[\s/]/g)||[]).length;
   // Convertir lastCol lettre → nombre de colonnes
   let totalCols=0;
   for(const c of lastCol.toUpperCase()) totalCols=totalCols*26+(c.charCodeAt(0)-64);
+  console.log(`[fix-tables-v2] existingCount=${existingCount}, totalCols=${totalCols}, extraCols=${extraColLabels?.length??0}`);
   if(extraColLabels&&extraColLabels.length>0){
     // Cas : nouvelles colonnes à ajouter (IMPORTANCE ou colonne custom)
     const newTotal=existingCount+extraColLabels.length;
+    console.log(`[fix-tables-v2] Adding ${extraColLabels.length} extra cols → count=${newTotal}`);
     r=r.replace(/(<tableColumns\b[^>]*\bcount=)"(\d+)"/,`$1"${newTotal}"`);
     const newCols=extraColLabels.map((lbl,i)=>`<tableColumn id="${existingCount+i+1}" name="${xmlEsc(lbl)}"/>`).join('');
     r=r.replace('</tableColumns>',newCols+'</tableColumns>');
   } else if(totalCols!==existingCount){
+    console.warn(`[fix-tables-v2] MISMATCH: ref implies ${totalCols} cols but table has ${existingCount} — fixing`);
     if(totalCols>existingCount){
       // Ajouter les définitions de colonnes manquantes
       const newCols=[];
@@ -1869,6 +1874,8 @@ function updateTableXml(tableXml,lastCol,lastRow,extraColLabels){
       r=r.replace(/<tableColumn[\s/][^>]*\/>/g,m=>{ kept++; return kept<=totalCols?m:''; });
       r=r.replace(/(<tableColumns\b[^>]*\bcount=)"(\d+)"/,`$1"${totalCols}"`);
     }
+  } else {
+    console.log(`[fix-tables-v2] count OK (${existingCount}) — seulement ref mis à jour`);
   }
   return r;
 }
