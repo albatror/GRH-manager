@@ -1556,10 +1556,12 @@ function saveFormulaOverrides(){ localStorage.setItem('grh_formula_overrides',JS
 
 // Scanne un ZIP XLSX pour détecter les <calculatedColumnFormula>.
 // merge=true : fusionne avec le registre existant (pour re-détection depuis modèle original).
+// Retourne le nombre de formules nouvellement trouvées dans le fichier (0 si cache sans formule).
 async function detectTdbFormulas(zip, merge){
   // Partir des formules persistées (localStorage) — le fichier en cache n'a plus de <calculatedColumnFormula>
   if(!merge) TDB_FORMULA_REGISTRY = JSON.parse(JSON.stringify(TDB_FORMULA_DETECTED));
-  if(!zip) return;
+  if(!zip) return 0;
+  let newlyFound=0;
   try{
     const nameToPath=await getSheetPathMap(zip);
     for(const[key,{sheet}] of Object.entries(TDB_MAP_BASE)){
@@ -1586,11 +1588,13 @@ async function detectTdbFormulas(zip, merge){
       if(sheetFormulas.length>0){
         TDB_FORMULA_REGISTRY[sheet]=sheetFormulas;
         TDB_FORMULA_DETECTED[sheet]=sheetFormulas;
+        newlyFound+=sheetFormulas.length;
       }
     }
     saveFormulaDetected();
     console.log('[formules-tdb] Registre:',JSON.stringify(TDB_FORMULA_REGISTRY));
   }catch(e){ console.warn('[formules-tdb] Erreur détection:',e); }
+  return newlyFound;
 }
 
 // Ajoute ou met à jour manuellement une formule dans le registre.
@@ -2310,7 +2314,22 @@ async function pickFile(which){
     }else{
       fileHandleTdb=handle||null; fileNameTdb=name;
       zipTdb=zip; wbTdb=wb; loadTdbWorkbook(wb);
-      detectTdbFormulas(zip).then(()=>{ if(currentView==='admin') renderView(); });
+      detectTdbFormulas(zip).then(newlyFound=>{
+        if(newlyFound>0){
+          // Formules trouvées dans le fichier chargé → sauvegardées automatiquement comme modèle
+          const total=Object.values(TDB_FORMULA_DETECTED).reduce((s,a)=>s+a.length,0);
+          notify(`✓ ${newlyFound} formule(s) détectée(s) et sauvegardées automatiquement comme modèle`);
+          localStorage.setItem('grh_formula_template_src',name);
+        } else {
+          const saved=Object.values(TDB_FORMULA_REGISTRY).reduce((s,a)=>s+a.length,0);
+          if(saved>0){
+            // Modèle chargé depuis la mémoire (localStorage) — aucune action requise
+            const src=localStorage.getItem('grh_formula_template_src')||'modèle précédent';
+            console.log(`[formules-tdb] ${saved} formule(s) depuis le modèle sauvegardé (${src})`);
+          }
+        }
+        if(currentView==='admin') renderView();
+      });
     }
     await idbSet(which+'_buf',buf);
     localStorage.setItem('grh_file_'+which,JSON.stringify({name,savedAt:Date.now()}));
@@ -3824,9 +3843,18 @@ function renderAdminFormulas(){
     <p style="color:var(--text-muted);font-size:13px">Chargez le Tableau de Bord pour détecter les formules.</p></div>`;
   }
   if(allEntries.length===0){
+    const tmplSrc=localStorage.getItem('grh_formula_template_src');
     return`<div class="admin-section"><div class="admin-section-title">📐 Formules calculées</div>
-    <p style="color:var(--text-muted);font-size:13px">Aucune formule calculée détectée dans le Tableau de Bord.</p>
-    <p style="color:var(--text-muted);font-size:12px">Les formules sont détectées automatiquement lors du chargement du fichier.</p></div>`;
+    <p style="color:var(--text-muted);font-size:13px">Aucune formule détectée dans le Tableau de Bord chargé.</p>
+    <p style="color:var(--text-muted);font-size:12px">
+      Les formules sont <strong>détectées automatiquement</strong> lors du chargement du fichier Excel original.
+      Si votre fichier est une version déjà sauvegardée par GRH-Manager, utilisez le bouton ci-dessous pour
+      re-détecter depuis le fichier modèle d'origine.
+    </p>
+    <button onclick="detectFormulasFromOriginal()"
+      style="margin-top:8px;padding:6px 14px;background:var(--green-soft);color:var(--green);border:1px solid var(--green);border-radius:var(--r);font-size:12px;cursor:pointer">
+      🔍 Détecter depuis le modèle original
+    </button></div>`;
   }
 
   const rows=allEntries.map(({sheet,fi,overKey,hasOverride,effective})=>`
@@ -3852,20 +3880,23 @@ function renderAdminFormulas(){
 
   const knownSheets=Object.keys(TDB_MAP_BASE).map(k=>TDB_MAP_BASE[k].sheet);
 
+  const tmplSrc=localStorage.getItem('grh_formula_template_src');
   return`<div>
   <div class="admin-section">
     <div class="admin-section-title">📐 Formules calculées</div>
-    <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
-      Ces formules sont <strong>préservées et écrites dans chaque ligne</strong> lors de la sauvegarde.
-      Les références de ligne (ex. <code>$F2</code>) sont ajustées automatiquement pour chaque ligne.
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px">
+      Ces formules sont <strong>détectées automatiquement</strong> lors du chargement du Tableau de Bord
+      et <strong>préservées dans chaque ligne</strong> lors de la sauvegarde.
+      Les références de ligne (ex. <code>$F2</code>) sont ajustées automatiquement.
     </p>
+    ${tmplSrc?`<p style="font-size:11px;color:var(--green);margin-bottom:12px">✓ Modèle détecté automatiquement depuis : <strong>${xmlEscHtml(tmplSrc)}</strong></p>`:''}
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
       <button onclick="detectFormulasFromOriginal()"
         style="padding:6px 14px;background:var(--green-soft);color:var(--green);border:1px solid var(--green);border-radius:var(--r);font-size:12px;cursor:pointer">
-        🔍 Détecter depuis le modèle original
+        🔍 Recharger depuis un autre fichier modèle
       </button>
       <span style="font-size:11px;color:var(--text-muted);align-self:center">
-        Si les formules ont disparu du cache, rechargez-les depuis le fichier modèle d'origine.
+        Uniquement si le fichier a changé ou si la détection automatique a échoué.
       </span>
     </div>
     ${allEntries.length===0?`<p style="color:var(--text-muted);font-size:12px">Aucune formule enregistrée. Utilisez le bouton ci-dessus ou ajoutez-en une manuellement.</p>`:rows}
