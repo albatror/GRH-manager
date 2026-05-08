@@ -255,7 +255,7 @@ tbody td:first-child{font-family:var(--mono);font-size:10.5px;color:var(--text-m
   <div id="sidebar">
     <div id="sb-head">
       <h1>GRH Manager</h1>
-      <p>Paye · Tableau de Bord <span style="font-size:9px;opacity:.5">fix-tables-v11</span></p>
+      <p>Paye · Tableau de Bord <span style="font-size:9px;opacity:.5">fix-tables-v12</span></p>
     </div>
     <div id="sb-files">
       <div class="file-btn" id="fb-paye" onclick="pickFile('paye')">
@@ -1538,93 +1538,12 @@ let zipPaye=null, zipTdb=null;  // JSZip instances — conservées entre sauvega
 // Handles alternatifs (chemin de sauvegarde personnalisé défini en admin)
 let altHandlePaye=null, altHandleTdb=null;
 
-// ─── REGISTRE DES FORMULES TDB ───────────────────────────
-// TDB_FORMULA_REGISTRY  : formules actives pour la session — { [sheet]: [{colSeqIndex,colLetter,colName,formula}] }
-// TDB_FORMULA_DETECTED  : formules persistées en localStorage — survit aux rechargements depuis le cache
-// TDB_FORMULA_OVERRIDES : formules éditées par l'utilisateur — persistées en localStorage
-let TDB_FORMULA_REGISTRY = {};
-let TDB_FORMULA_DETECTED = {};
-let TDB_FORMULA_OVERRIDES = {};
-(function initFormulaStorage(){
-  try{ TDB_FORMULA_DETECTED =JSON.parse(localStorage.getItem('grh_formula_detected') ||'{}'); }catch(e){ TDB_FORMULA_DETECTED={}; }
-  try{ TDB_FORMULA_OVERRIDES=JSON.parse(localStorage.getItem('grh_formula_overrides')||'{}'); }catch(e){ TDB_FORMULA_OVERRIDES={}; }
-  // Initialiser le registre session depuis les formules persistées
-  TDB_FORMULA_REGISTRY = JSON.parse(JSON.stringify(TDB_FORMULA_DETECTED));
+// Nettoyer les anciennes clés localStorage liées aux formules (supprimées en v12)
+(function cleanupLegacyFormulaStorage(){
+  localStorage.removeItem('grh_formula_detected');
+  localStorage.removeItem('grh_formula_overrides');
+  localStorage.removeItem('grh_formula_template_src');
 })();
-function saveFormulaDetected(){ localStorage.setItem('grh_formula_detected', JSON.stringify(TDB_FORMULA_DETECTED)); }
-function saveFormulaOverrides(){ localStorage.setItem('grh_formula_overrides',JSON.stringify(TDB_FORMULA_OVERRIDES)); }
-
-// Scanne un ZIP XLSX pour détecter les <calculatedColumnFormula>.
-// merge=true : fusionne avec le registre existant (pour re-détection depuis modèle original).
-// Retourne le nombre de formules nouvellement trouvées dans le fichier (0 si cache sans formule).
-async function detectTdbFormulas(zip, merge){
-  // Partir des formules persistées (localStorage) — le fichier en cache n'a plus de <calculatedColumnFormula>
-  if(!merge) TDB_FORMULA_REGISTRY = JSON.parse(JSON.stringify(TDB_FORMULA_DETECTED));
-  if(!zip) return 0;
-  let newlyFound=0;
-  try{
-    const nameToPath=await getSheetPathMap(zip);
-    for(const[key,{sheet}] of Object.entries(TDB_MAP_BASE)){
-      const path=nameToPath[sheet];
-      if(!path||!zip.files[path]) continue;
-      const tablePaths=await getSheetTablePaths(zip,path);
-      const sheetFormulas=[];
-      for(const tp of tablePaths){
-        if(!zip.files[tp]) continue;
-        const txml=await zip.files[tp].async('text');
-        const allColRe=/<tableColumn\b([^>]*)(?:\/>|>[\s\S]*?<\/tableColumn>)/g;
-        let allCm, idx=0;
-        while((allCm=allColRe.exec(txml))!==null){
-          const fullMatch=allCm[0];
-          const attrs=allCm[1];
-          const fmMatch=fullMatch.match(/<calculatedColumnFormula>([\s\S]*?)<\/calculatedColumnFormula>/);
-          if(fmMatch){
-            const colName=(attrs.match(/\bname="([^"]+)"/)??[])[1]||'';
-            sheetFormulas.push({colSeqIndex:idx,colLetter:idxToCol(idx),colName,formula:fmMatch[1]});
-          }
-          idx++;
-        }
-      }
-      if(sheetFormulas.length>0){
-        TDB_FORMULA_REGISTRY[sheet]=sheetFormulas;
-        TDB_FORMULA_DETECTED[sheet]=sheetFormulas;
-        newlyFound+=sheetFormulas.length;
-      }
-    }
-    saveFormulaDetected();
-    console.log('[formules-tdb] Registre:',JSON.stringify(TDB_FORMULA_REGISTRY));
-  }catch(e){ console.warn('[formules-tdb] Erreur détection:',e); }
-  return newlyFound;
-}
-
-// Ajoute ou met à jour manuellement une formule dans le registre.
-function addManualFormula(sheet, colLetter, colName, formula){
-  const colSeqIndex=colLetter.split('').reduce((n,c)=>n*26+(c.charCodeAt(0)-64),0)-1;
-  const fi={colSeqIndex,colLetter:colLetter.toUpperCase(),colName:colName||colLetter,formula};
-  if(!TDB_FORMULA_DETECTED[sheet]) TDB_FORMULA_DETECTED[sheet]=[];
-  const existing=TDB_FORMULA_DETECTED[sheet].findIndex(x=>x.colSeqIndex===colSeqIndex);
-  if(existing>=0) TDB_FORMULA_DETECTED[sheet][existing]=fi; else TDB_FORMULA_DETECTED[sheet].push(fi);
-  TDB_FORMULA_REGISTRY[sheet]=(TDB_FORMULA_DETECTED[sheet]||[]).slice();
-  saveFormulaDetected();
-}
-
-// Supprime une formule du registre.
-function removeDetectedFormula(sheet, colSeqIndex){
-  if(TDB_FORMULA_DETECTED[sheet])
-    TDB_FORMULA_DETECTED[sheet]=TDB_FORMULA_DETECTED[sheet].filter(fi=>fi.colSeqIndex!==colSeqIndex);
-  if(TDB_FORMULA_DETECTED[sheet]&&TDB_FORMULA_DETECTED[sheet].length===0) delete TDB_FORMULA_DETECTED[sheet];
-  TDB_FORMULA_REGISTRY[sheet]=(TDB_FORMULA_DETECTED[sheet]||[]).slice();
-  saveFormulaDetected();
-}
-
-// Retourne les formules effectives pour un onglet (override utilisateur > détecté/manuel).
-function getEffectiveFormulas(sheet){
-  const base=TDB_FORMULA_REGISTRY[sheet]||[];
-  return base.map(fi=>{
-    const key=`${sheet}:${fi.colSeqIndex}`;
-    return{...fi, formula: TDB_FORMULA_OVERRIDES[key]??fi.formula};
-  });
-}
 
 // ─── XML HELPERS ──────────────────────────────────────────
 function xmlEsc(s){
@@ -1638,15 +1557,6 @@ function xmlEsc(s){
 function xmlEscContent(s){
   const clean=String(s).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,'');
   return clean.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-// Ajuste les références de lignes relatives dans une formule de colonne calculée.
-// La formule est stockée pour baseRow (2 = 1ère ligne de données quand l'en-tête est en ligne 1).
-// Pour targetRow, on remplace les refs relatives (sans $) pointant sur baseRow par targetRow.
-function adjustFormulaRow(formula,baseRow,targetRow){
-  return formula.replace(/(\$?[A-Z]+)(\$?)(\d+)/g,(m,col,dollar,row)=>
-    (!dollar&&parseInt(row)===baseRow)?col+targetRow:m
-  );
 }
 
 function idxToCol(n){
@@ -1729,8 +1639,7 @@ function extractColStyles(sheetXml, nCols, dataStartRow){
 // dataStartRow = première ligne de données Excel (1-based)
 // colLabels = labels de toutes les colonnes (pour mise à jour des en-têtes si nouvelles colonnes)
 // numericKeys = Set de clés à écrire comme nombre (ex: matricule)
-// formulaCols = { [colSeqIndex]: formulaString } — colonnes calculées à écrire comme cellules formule
-function rewriteSheetXml(sheetXml, records, colKeys, dataStartRow, strings, colLabels, numericKeys, formulaCols){
+function rewriteSheetXml(sheetXml, records, colKeys, dataStartRow, strings, colLabels, numericKeys){
   const nCols=colKeys.length;
   const colLetters=colKeys.map((_,i)=>idxToCol(i));
   const colStyles=extractColStyles(sheetXml, nCols, dataStartRow);
@@ -1749,12 +1658,6 @@ function rewriteSheetXml(sheetXml, records, colKeys, dataStartRow, strings, colL
     const cells=colLetters.map((col,ci)=>{
       const s=colStyles[col]?.s||'0';
       const ref=col+rowNum;
-
-      // Colonne calculée : écrire la formule ajustée à la ligne courante
-      if(formulaCols&&formulaCols[ci]!==undefined){
-        const adjFormula=adjustFormulaRow(formulaCols[ci],dataStartRow,rowNum);
-        return`<c r="${ref}" s="${s}"><f>${xmlEscContent(adjFormula)}</f></c>`;
-      }
 
       const raw=rec[colKeys[ci]];
 
@@ -2018,63 +1921,6 @@ function updateTableXml(tableXml,lastCol,lastRow,extraColLabels){
   return r;
 }
 
-// Reconstruit un fichier table XML en partant de zéro à partir des métadonnées existantes.
-// Préserve les formules calculées (formulaInfos = [{colSeqIndex, formula}]) pour les colonnes concernées.
-// Élimine les IDs hors-ordre et toute corruption accumulée.
-function rebuildTableXml(existingTableXml, lastCol, lastRow, allColLabels, formulaInfos){
-  let nCols=0;
-  for(const c of lastCol.toUpperCase()) nCols=nCols*26+(c.charCodeAt(0)-64);
-  const refVal=`A1:${lastCol}${Math.max(lastRow,2)}`;
-
-  // Extraire les métadonnées de l'élément <table>
-  const tTag=existingTableXml.match(/<table\b[^>]*>/)?.[0]||'';
-  const getAttr=(attr)=>(tTag.match(new RegExp(`\\b${attr}="([^"]+)"`))??[])[1]||'';
-  const tblId=getAttr('id')||'1';
-  const tblName=getAttr('name')||'Tableau';
-  const tblDispName=getAttr('displayName')||tblName;
-  const totalsRowShown=getAttr('totalsRowShown')||'0';
-  const fmtParts=['headerRowDxfId','dataDxfId','headerRowBorderDxfId','tableBorderDxfId','totalsRowBorderDxfId']
-    .map(a=>{const v=getAttr(a);return v?` ${a}="${v}"`:''}).join('');
-
-  // Extraire les définitions de colonnes existantes EN ORDRE DE SÉQUENCE (pas par id)
-  const existingCols=[];
-  const colRe=/<tableColumn\b([^>]*)(?:\/>|>[\s\S]*?<\/tableColumn>)/g;
-  let cm;
-  while((cm=colRe.exec(existingTableXml))!==null){
-    const attrs=cm[1];
-    existingCols.push({
-      name:(attrs.match(/\bname="([^"]+)"/)??[])[1]||'',
-      dxf:(attrs.match(/\bdataDxfId="(\d+)"/)??[])[1]||''
-    });
-  }
-
-  // Style du tableau
-  const styleXml=existingTableXml.match(/<tableStyleInfo\b[^/]*\/>/)?.[0]
-    ||'<tableStyleInfo name="TableStyleLight13" showFirstColumn="0" showLastColumn="0" showRowStripes="1" showColumnStripes="0"/>';
-
-  // Carte des formules par index de séquence (source: registre au moment du chargement)
-  const formulaMap={};
-  (formulaInfos||[]).forEach(fi=>{ formulaMap[fi.colSeqIndex]=fi.formula; });
-
-  // Construire les éléments de colonnes : nom original en priorité, sinon label du schéma.
-  // Les colonnes avec formule calculée reçoivent un élément <calculatedColumnFormula>.
-  const colElems=Array.from({length:nCols},(_,i)=>{
-    const ex=existingCols[i];
-    const lbl=(ex&&ex.name)?ex.name:((allColLabels&&allColLabels[i])||`Column${i+1}`);
-    const dxf=(ex&&ex.dxf)?` dataDxfId="${ex.dxf}"`:'' ;
-    const formula=formulaMap[i];
-    if(formula){
-      return`<tableColumn id="${i+1}" name="${xmlEsc(lbl)}"${dxf}><calculatedColumnFormula>${xmlEscContent(formula)}</calculatedColumnFormula></tableColumn>`;
-    }
-    return`<tableColumn id="${i+1}" name="${xmlEsc(lbl)}"${dxf}/>`;
-  }).join('');
-
-  const hasFm=Object.keys(formulaMap).length;
-  console.log(`[fix-tables-v9] rebuildTableXml id=${tblId} name="${tblName}" nCols=${nCols} ref=${refVal} formules=${hasFm}`);
-  const ns='xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
-  return`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<table ${ns} id="${tblId}" name="${xmlEsc(tblName)}" displayName="${xmlEsc(tblDispName)}" ref="${refVal}" totalsRowShown="${totalsRowShown}"${fmtParts}><autoFilter ref="${refVal}"/><tableColumns count="${nCols}">${colElems}</tableColumns>${styleXml}</table>`;
-}
-
 // ─── SAUVEGARDE PRINCIPALE ────────────────────────────────
 async function saveAllFiles(){
   const btn=document.getElementById('save-all-btn');
@@ -2155,33 +2001,15 @@ async function saveAllFiles(){
           const tdbColLabels=getLabelsForColKeys(tdbColKeys,key);
           const tdbNumKeys=getNumericKeySet(key);
           const recs=DB[key]||[];
-          // Formules calculées pour cet onglet (avec overrides utilisateur, persistées via localStorage)
-          const sheetFormulas=getEffectiveFormulas(sheet);
-          const hasFormulas=sheetFormulas.length>0;
-          if(hasFormulas){
-            // Onglet avec colonnes calculées : reconstruction complète pour préserver les formules
-            const formulaCols={};
-            sheetFormulas.forEach(fi=>{ formulaCols[fi.colSeqIndex]=fi.formula; });
-            zipTdb.file(path,rewriteSheetXml(xml,recs,tdbColKeys,2,strings,tdbColLabels,tdbNumKeys,formulaCols));
-            for(const tp of await getSheetTablePaths(zipTdb,path)){
-              if(!zipTdb.files[tp]) continue;
-              const txml=await zipTdb.files[tp].async('text');
-              const fixedTxml=rebuildTableXml(txml,idxToCol(tdbColKeys.length-1),1+recs.length,tdbColLabels,sheetFormulas);
-              console.log(`[fix-tables-v11] rebuildTableXml ${sheet} formules=${sheetFormulas.length}`);
-              zipTdb.file(tp,fixedTxml);
-            }
-          } else {
-            // Onglet sans formule calculée : updateTableXml (plus sûr, prouvé pour table2/table3)
-            zipTdb.file(path,rewriteSheetXml(xml,recs,tdbColKeys,2,strings,tdbColLabels,tdbNumKeys,null));
-            for(const tp of await getSheetTablePaths(zipTdb,path)){
-              if(!zipTdb.files[tp]) continue;
-              const txml=await zipTdb.files[tp].async('text');
-              const tblColCount=(txml.match(/<tableColumn[\s/]/g)||[]).length;
-              const extraLabels=tdbColLabels.slice(tblColCount);
-              const fixedTxml=updateTableXml(txml,idxToCol(tdbColKeys.length-1),1+recs.length,extraLabels.length?extraLabels:null);
-              console.log(`[fix-tables-v11] updateTableXml ${sheet}`);
-              zipTdb.file(tp,fixedTxml);
-            }
+          zipTdb.file(path,rewriteSheetXml(xml,recs,tdbColKeys,2,strings,tdbColLabels,tdbNumKeys));
+          for(const tp of await getSheetTablePaths(zipTdb,path)){
+            if(!zipTdb.files[tp]) continue;
+            const txml=await zipTdb.files[tp].async('text');
+            const tblColCount=(txml.match(/<tableColumn[\s/]/g)||[]).length;
+            const extraLabels=tdbColLabels.slice(tblColCount);
+            const fixedTxml=updateTableXml(txml,idxToCol(tdbColKeys.length-1),1+recs.length,extraLabels.length?extraLabels:null);
+            console.log(`[fix-tables-v12] updateTableXml ${sheet}`);
+            zipTdb.file(tp,fixedTxml);
           }
         }
         // Supprimer calcChain (Excel le regénère proprement à l'ouverture)
@@ -2283,7 +2111,6 @@ async function tryAutoReload(){
         zipTdb=await JSZip.loadAsync(buf);
         fileNameTdb=tdbMeta.name; fileHandleTdb=null;
         loadTdbWorkbook(wbTdb); markLoaded('tdb',tdbMeta.name); loaded=true;
-        detectTdbFormulas(zipTdb); // async, non bloquant
       }catch(e){console.warn('Auto-reload tdb',e);}
     }
   }
@@ -2314,22 +2141,6 @@ async function pickFile(which){
     }else{
       fileHandleTdb=handle||null; fileNameTdb=name;
       zipTdb=zip; wbTdb=wb; loadTdbWorkbook(wb);
-      detectTdbFormulas(zip).then(newlyFound=>{
-        if(newlyFound>0){
-          // Formules trouvées dans le fichier chargé → sauvegardées automatiquement comme modèle
-          const total=Object.values(TDB_FORMULA_DETECTED).reduce((s,a)=>s+a.length,0);
-          notify(`✓ ${newlyFound} formule(s) détectée(s) et sauvegardées automatiquement comme modèle`);
-          localStorage.setItem('grh_formula_template_src',name);
-        } else {
-          const saved=Object.values(TDB_FORMULA_REGISTRY).reduce((s,a)=>s+a.length,0);
-          if(saved>0){
-            // Modèle chargé depuis la mémoire (localStorage) — aucune action requise
-            const src=localStorage.getItem('grh_formula_template_src')||'modèle précédent';
-            console.log(`[formules-tdb] ${saved} formule(s) depuis le modèle sauvegardé (${src})`);
-          }
-        }
-        if(currentView==='admin') renderView();
-      });
     }
     await idbSet(which+'_buf',buf);
     localStorage.setItem('grh_file_'+which,JSON.stringify({name,savedAt:Date.now()}));
@@ -2983,7 +2794,6 @@ function renderAdminPage(){
     {id:'navigation', label:'🗂 Navigation'},
     {id:'dashboard',  label:'🎛 Dashboard'},
     {id:'importance', label:'⚡ Importance'},
-    {id:'formulas',   label:'📐 Formules'},
     {id:'templates',  label:'💾 Templates'},
     {id:'settings',   label:'⚙ Paramètres'},
   ];
@@ -3005,7 +2815,6 @@ function renderAdminTab(tab){
   if(tab==='navigation')return renderAdminNavigation();
   if(tab==='dashboard') return renderAdminDashboard();
   if(tab==='importance')return renderAdminImportance();
-  if(tab==='formulas')  return renderAdminFormulas();
   if(tab==='templates') return renderAdminTemplates();
   if(tab==='settings')  return renderAdminSettings();
   return'';
@@ -3827,161 +3636,7 @@ function toggleImportance(tableKey,enabled){
   setTimeout(()=>setAdminTab('importance'),300);
 }
 
-// ── TAB: FORMULES ─────────────────────────────────────────
-function renderAdminFormulas(){
-  const allEntries=[];
-  for(const[sheet,fis] of Object.entries(TDB_FORMULA_REGISTRY)){
-    for(const fi of fis){
-      const overKey=`${sheet}:${fi.colSeqIndex}`;
-      const hasOverride=TDB_FORMULA_OVERRIDES[overKey]!==undefined;
-      allEntries.push({sheet,fi,overKey,hasOverride,effective:TDB_FORMULA_OVERRIDES[overKey]??fi.formula});
-    }
-  }
-
-  if(!zipTdb&&allEntries.length===0){
-    return`<div class="admin-section"><div class="admin-section-title">📐 Formules calculées</div>
-    <p style="color:var(--text-muted);font-size:13px">Chargez le Tableau de Bord pour détecter les formules.</p></div>`;
-  }
-  if(allEntries.length===0){
-    const tmplSrc=localStorage.getItem('grh_formula_template_src');
-    return`<div class="admin-section"><div class="admin-section-title">📐 Formules calculées</div>
-    <p style="color:var(--text-muted);font-size:13px">Aucune formule détectée dans le Tableau de Bord chargé.</p>
-    <p style="color:var(--text-muted);font-size:12px">
-      Les formules sont <strong>détectées automatiquement</strong> lors du chargement du fichier Excel original.
-      Si votre fichier est une version déjà sauvegardée par GRH-Manager, utilisez le bouton ci-dessous pour
-      re-détecter depuis le fichier modèle d'origine.
-    </p>
-    <button onclick="detectFormulasFromOriginal()"
-      style="margin-top:8px;padding:6px 14px;background:var(--green-soft);color:var(--green);border:1px solid var(--green);border-radius:var(--r);font-size:12px;cursor:pointer">
-      🔍 Détecter depuis le modèle original
-    </button></div>`;
-  }
-
-  const rows=allEntries.map(({sheet,fi,overKey,hasOverride,effective})=>`
-  <div class="admin-section" style="margin-bottom:12px">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
-      <span style="font-size:13px;font-weight:600">${xmlEscHtml(sheet)}</span>
-      <span style="background:var(--accent-soft);color:var(--accent);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">Col. ${fi.colLetter} — ${xmlEscHtml(fi.colName)}</span>
-      ${hasOverride?'<span style="background:var(--orange-soft);color:var(--orange);padding:2px 7px;border-radius:4px;font-size:10px">modifiée</span>':''}
-    </div>
-    <textarea id="fm_${overKey.replace(/[^a-zA-Z0-9]/g,'_')}"
-      style="width:100%;font-family:var(--mono);font-size:11px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);resize:vertical;min-height:64px;box-sizing:border-box"
-      rows="3">${xmlEscHtml(effective)}</textarea>
-    <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-      <button onclick="saveFormulaOverride(${JSON.stringify(overKey)},'fm_${overKey.replace(/[^a-zA-Z0-9]/g,'_')}')"
-        style="padding:5px 14px;background:var(--accent);color:#fff;border:none;border-radius:var(--r);font-size:12px;cursor:pointer">Enregistrer</button>
-      ${hasOverride?`<button onclick="resetFormulaOverride(${JSON.stringify(overKey)})"
-        style="padding:5px 14px;background:var(--surface3);color:var(--text-muted);border:1px solid var(--border);border-radius:var(--r);font-size:12px;cursor:pointer">Réinitialiser</button>`:''}
-      <button onclick="removeDetectedFormula(${JSON.stringify(sheet)},${fi.colSeqIndex});setAdminTab('formulas')"
-        style="padding:5px 14px;background:var(--red-soft);color:var(--red);border:1px solid var(--red);border-radius:var(--r);font-size:12px;cursor:pointer">Supprimer</button>
-    </div>
-    <p style="font-size:10px;color:var(--text-dim);margin-top:6px">Formule d'origine : <code style="font-size:10px">${xmlEscHtml(fi.formula)}</code></p>
-  </div>`).join('');
-
-  const knownSheets=Object.keys(TDB_MAP_BASE).map(k=>TDB_MAP_BASE[k].sheet);
-
-  const tmplSrc=localStorage.getItem('grh_formula_template_src');
-  return`<div>
-  <div class="admin-section">
-    <div class="admin-section-title">📐 Formules calculées</div>
-    <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px">
-      Ces formules sont <strong>détectées automatiquement</strong> lors du chargement du Tableau de Bord
-      et <strong>préservées dans chaque ligne</strong> lors de la sauvegarde.
-      Les références de ligne (ex. <code>$F2</code>) sont ajustées automatiquement.
-    </p>
-    ${tmplSrc?`<p style="font-size:11px;color:var(--green);margin-bottom:12px">✓ Modèle détecté automatiquement depuis : <strong>${xmlEscHtml(tmplSrc)}</strong></p>`:''}
-    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-      <button onclick="detectFormulasFromOriginal()"
-        style="padding:6px 14px;background:var(--green-soft);color:var(--green);border:1px solid var(--green);border-radius:var(--r);font-size:12px;cursor:pointer">
-        🔍 Recharger depuis un autre fichier modèle
-      </button>
-      <span style="font-size:11px;color:var(--text-muted);align-self:center">
-        Uniquement si le fichier a changé ou si la détection automatique a échoué.
-      </span>
-    </div>
-    ${allEntries.length===0?`<p style="color:var(--text-muted);font-size:12px">Aucune formule enregistrée. Utilisez le bouton ci-dessus ou ajoutez-en une manuellement.</p>`:rows}
-  </div>
-  <div class="admin-section">
-    <div class="admin-section-title">Ajouter une formule manuellement</div>
-    <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
-      Utile si la détection automatique ne trouve pas la formule (fichier cache sans formule).
-      La colonne est identifiée par sa lettre (A, B, … Q, R…).
-    </p>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
-      <div style="flex:1;min-width:140px">
-        <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Onglet</label>
-        <select id="add-fm-sheet" style="width:100%;padding:6px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px">
-          ${knownSheets.map(s=>`<option value="${xmlEscHtml(s)}">${xmlEscHtml(s)}</option>`).join('')}
-        </select>
-      </div>
-      <div style="flex:0 0 80px">
-        <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Colonne</label>
-        <input type="text" id="add-fm-col" placeholder="ex: Q" maxlength="3"
-          style="width:100%;padding:6px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px">
-      </div>
-      <div style="flex:1;min-width:140px">
-        <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Nom de la colonne</label>
-        <input type="text" id="add-fm-name" placeholder="ex: SARCP de la Titu Art. 38"
-          style="width:100%;padding:6px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px">
-      </div>
-    </div>
-    <div style="margin-bottom:10px">
-      <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Formule (telle qu'elle apparaît en ligne 2, sans le signe =)</label>
-      <textarea id="add-fm-formula" rows="3" placeholder='ex: IF(AND(ISNUMBER(FIND("Art 38",$F2)),$F2="Art 38"),"Informer SARCP de la titularisation","")'
-        style="width:100%;font-family:var(--mono);font-size:11px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);resize:vertical;box-sizing:border-box"></textarea>
-    </div>
-    <button onclick="submitAddFormula()"
-      style="padding:6px 16px;background:var(--purple);color:#fff;border:none;border-radius:var(--r);font-size:12px;cursor:pointer">
-      ＋ Ajouter la formule
-    </button>
-  </div>
-  </div>`;
-}
-
 function xmlEscHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-
-function saveFormulaOverride(overKey, inputId){
-  const el=document.getElementById(inputId);
-  if(!el) return;
-  TDB_FORMULA_OVERRIDES[overKey]=el.value;
-  saveFormulaOverrides();
-  notify('✓ Formule enregistrée');
-  setAdminTab('formulas');
-}
-
-function resetFormulaOverride(overKey){
-  delete TDB_FORMULA_OVERRIDES[overKey];
-  saveFormulaOverrides();
-  notify('✓ Formule réinitialisée');
-  setAdminTab('formulas');
-}
-
-function submitAddFormula(){
-  const sheet=document.getElementById('add-fm-sheet')?.value||'';
-  const col=(document.getElementById('add-fm-col')?.value||'').toUpperCase().trim();
-  const name=document.getElementById('add-fm-name')?.value||col;
-  const formula=document.getElementById('add-fm-formula')?.value||'';
-  if(!sheet||!col||!formula){ notify('⚠ Onglet, colonne et formule requis'); return; }
-  addManualFormula(sheet,col,name,formula);
-  notify(`✓ Formule ajoutée pour ${sheet} col. ${col}`);
-  setAdminTab('formulas');
-}
-
-async function detectFormulasFromOriginal(){
-  if(!window.showOpenFilePicker){ notify('⚠ API non disponible dans ce navigateur'); return; }
-  try{
-    const[handle]=await window.showOpenFilePicker({
-      types:[{description:'Excel',accept:{'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['.xlsx']}}],
-      multiple:false
-    });
-    const file=await handle.getFile();
-    const buf=await file.arrayBuffer();
-    const zip=await JSZip.loadAsync(buf);
-    await detectTdbFormulas(zip, true); // merge=true
-    notify(`✓ Formules détectées depuis "${file.name}"`);
-    setAdminTab('formulas');
-  }catch(e){ if(e.name!=='AbortError') notify('⚠ Erreur: '+e.message); }
-}
 
 // ── TAB: TEMPLATES ────────────────────────────────────────
 function renderAdminTemplates(){
