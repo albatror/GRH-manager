@@ -255,7 +255,7 @@ tbody td:first-child{font-family:var(--mono);font-size:10.5px;color:var(--text-m
   <div id="sidebar">
     <div id="sb-head">
       <h1>GRH Manager</h1>
-      <p>Paye · Tableau de Bord <span style="font-size:9px;opacity:.5">fix-tables-v6</span></p>
+      <p>Paye · Tableau de Bord <span style="font-size:9px;opacity:.5">fix-tables-v7</span></p>
     </div>
     <div id="sb-files">
       <div class="file-btn" id="fb-paye" onclick="pickFile('paye')">
@@ -1725,9 +1725,10 @@ function rewriteSheetXml(sheetXml, records, colKeys, dataStartRow, strings, colL
     }
   }
 
-  // Supprimer l'autoFilter autonome au niveau feuille : la table gère son propre autoFilter,
-  // avoir les deux avec des ref différentes corrompt le fichier Excel.
-  result = result.replace(/<autoFilter\b[^>]*\/>/g, '');
+  // Synchroniser le ref de l'autoFilter au niveau feuille avec la plage réelle des données.
+  // Si le ref de l'autoFilter feuille diffère de celui du tableau interne Excel, Excel répare
+  // en supprimant le tableau. On aligne les deux sur la même plage A1:lastCol×lastRow.
+  result = result.replace(/<autoFilter\b[^>]*\/>/g, `<autoFilter ref="A1:${lastCol}${lastRow}"/>`);
 
   return result;
 }
@@ -1865,7 +1866,7 @@ async function getSheetTablePaths(zip,sheetPath){
 function updateTableXml(tableXml,lastCol,lastRow,extraColLabels){
   const refVal=`A1:${lastCol}${Math.max(lastRow,2)}`; // min 2 lignes (en-tête + 1 donnée) exigé par OOXML
   const _dbgRef=(tableXml.match(/\bref="([A-Z]+\d+:[A-Z]+\d+)"/)??[])[1]||'?';
-  console.log(`[fix-tables-v5] updateTableXml → ref: ${_dbgRef} → ${refVal}, lastCol=${lastCol}, lastRow=${lastRow}`);
+  console.log(`[fix-tables-v7] updateTableXml → ref: ${_dbgRef} → ${refVal}, lastCol=${lastCol}, lastRow=${lastRow}`);
   // Remplacer tous les attributs ref (table + autoFilter) en une seule passe globale
   let r=tableXml.replace(/\bref="[A-Z]+\d+:[A-Z]+\d+"/g,`ref="${refVal}"`);
   // Supprimer les formules calculées : GRH-Manager écrit des valeurs, pas des formules
@@ -1877,16 +1878,16 @@ function updateTableXml(tableXml,lastCol,lastRow,extraColLabels){
   // Convertir lastCol lettre → nombre de colonnes
   let totalCols=0;
   for(const c of lastCol.toUpperCase()) totalCols=totalCols*26+(c.charCodeAt(0)-64);
-  console.log(`[fix-tables-v5] existingCount=${existingCount}, totalCols=${totalCols}, extraCols=${extraColLabels?.length??0}`);
+  console.log(`[fix-tables-v7] existingCount=${existingCount}, totalCols=${totalCols}, extraCols=${extraColLabels?.length??0}`);
   if(extraColLabels&&extraColLabels.length>0){
     // Cas : nouvelles colonnes à ajouter (IMPORTANCE ou colonne custom)
     const newTotal=existingCount+extraColLabels.length;
-    console.log(`[fix-tables-v5] Adding ${extraColLabels.length} extra cols → count=${newTotal}`);
+    console.log(`[fix-tables-v7] Adding ${extraColLabels.length} extra cols → count=${newTotal}`);
     r=r.replace(/(<tableColumns\b[^>]*\bcount=)"(\d+)"/,`$1"${newTotal}"`);
     const newCols=extraColLabels.map((lbl,i)=>`<tableColumn id="${existingCount+i+1}" name="${xmlEsc(lbl)}"/>`).join('');
     r=r.replace('</tableColumns>',newCols+'</tableColumns>');
   } else if(totalCols!==existingCount){
-    console.warn(`[fix-tables-v5] MISMATCH: ref implies ${totalCols} cols but table has ${existingCount} — fixing`);
+    console.warn(`[fix-tables-v7] MISMATCH: ref implies ${totalCols} cols but table has ${existingCount} — fixing`);
     if(totalCols>existingCount){
       // Ajouter les définitions de colonnes manquantes
       const newCols=[];
@@ -1900,7 +1901,7 @@ function updateTableXml(tableXml,lastCol,lastRow,extraColLabels){
       r=r.replace(/(<tableColumns\b[^>]*\bcount=)"(\d+)"/,`$1"${totalCols}"`);
     }
   } else {
-    console.log(`[fix-tables-v5] count OK (${existingCount}) — seulement ref mis à jour`);
+    console.log(`[fix-tables-v7] count OK (${existingCount}) — seulement ref mis à jour`);
   }
   return r;
 }
@@ -1946,7 +1947,7 @@ function rebuildTableXml(existingTableXml, lastCol, lastRow, allColLabels){
     return`<tableColumn id="${i+1}" name="${xmlEsc(lbl)}"${dxf}/>`;
   }).join('');
 
-  console.log(`[fix-tables-v6] rebuildTableXml id=${tblId} name="${tblName}" nCols=${nCols} ref=${refVal} existingCols=${existingCols.length}`);
+  console.log(`[fix-tables-v7] rebuildTableXml id=${tblId} name="${tblName}" nCols=${nCols} ref=${refVal} existingCols=${existingCols.length}`);
   const ns='xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
   return`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<table ${ns} id="${tblId}" name="${xmlEsc(tblName)}" displayName="${xmlEsc(tblDispName)}" ref="${refVal}" totalsRowShown="${totalsRowShown}"${fmtParts}><autoFilter ref="${refVal}"/><tableColumns count="${nCols}">${colElems}</tableColumns>${styleXml}</table>`;
 }
@@ -2036,8 +2037,9 @@ async function saveAllFiles(){
           for(const tp of await getSheetTablePaths(zipTdb,path)){
             if(!zipTdb.files[tp]) continue;
             const txml=await zipTdb.files[tp].async('text');
-            // Reconstruire le XML de table depuis zéro pour éliminer toute corruption accumulée
-            zipTdb.file(tp,rebuildTableXml(txml,idxToCol(tdbColKeys.length-1),1+recs.length,tdbColLabels));
+            const tblColCount=(txml.match(/<tableColumn[\s/]/g)||[]).length;
+            const extraLabels=tdbColLabels.slice(tblColCount);
+            zipTdb.file(tp,updateTableXml(txml,idxToCol(tdbColKeys.length-1),1+recs.length,extraLabels.length?extraLabels:null));
           }
         }
         // Supprimer calcChain (Excel le regénère proprement à l'ouverture)
