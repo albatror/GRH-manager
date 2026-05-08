@@ -255,7 +255,7 @@ tbody td:first-child{font-family:var(--mono);font-size:10.5px;color:var(--text-m
   <div id="sidebar">
     <div id="sb-head">
       <h1>GRH Manager</h1>
-      <p>Paye · Tableau de Bord <span style="font-size:9px;opacity:.5">fix-tables-v7</span></p>
+      <p>Paye · Tableau de Bord <span style="font-size:9px;opacity:.5">fix-tables-v9</span></p>
     </div>
     <div id="sb-files">
       <div class="file-btn" id="fb-paye" onclick="pickFile('paye')">
@@ -1728,7 +1728,8 @@ function rewriteSheetXml(sheetXml, records, colKeys, dataStartRow, strings, colL
   // Synchroniser le ref de l'autoFilter au niveau feuille avec la plage réelle des données.
   // Si le ref de l'autoFilter feuille diffère de celui du tableau interne Excel, Excel répare
   // en supprimant le tableau. On aligne les deux sur la même plage A1:lastCol×lastRow.
-  result = result.replace(/<autoFilter\b[^>]*\/>/g, `<autoFilter ref="A1:${lastCol}${lastRow}"/>`);
+  // Le pattern gère aussi les <autoFilter> non-self-closing (ex: filtres actifs avec <filterColumn>).
+  result = result.replace(/<autoFilter\b[^>]*(?:\/>|>[\s\S]*?<\/autoFilter>)/g, `<autoFilter ref="A1:${lastCol}${lastRow}"/>`);
 
   return result;
 }
@@ -1947,7 +1948,7 @@ function rebuildTableXml(existingTableXml, lastCol, lastRow, allColLabels){
     return`<tableColumn id="${i+1}" name="${xmlEsc(lbl)}"${dxf}/>`;
   }).join('');
 
-  console.log(`[fix-tables-v7] rebuildTableXml id=${tblId} name="${tblName}" nCols=${nCols} ref=${refVal} existingCols=${existingCols.length}`);
+  console.log(`[fix-tables-v9] rebuildTableXml id=${tblId} name="${tblName}" nCols=${nCols} ref=${refVal} existingCols=${existingCols.length}`);
   const ns='xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
   return`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<table ${ns} id="${tblId}" name="${xmlEsc(tblName)}" displayName="${xmlEsc(tblDispName)}" ref="${refVal}" totalsRowShown="${totalsRowShown}"${fmtParts}><autoFilter ref="${refVal}"/><tableColumns count="${nCols}">${colElems}</tableColumns>${styleXml}</table>`;
 }
@@ -2037,9 +2038,11 @@ async function saveAllFiles(){
           for(const tp of await getSheetTablePaths(zipTdb,path)){
             if(!zipTdb.files[tp]) continue;
             const txml=await zipTdb.files[tp].async('text');
-            const tblColCount=(txml.match(/<tableColumn[\s/]/g)||[]).length;
-            const extraLabels=tdbColLabels.slice(tblColCount);
-            zipTdb.file(tp,updateTableXml(txml,idxToCol(tdbColKeys.length-1),1+recs.length,extraLabels.length?extraLabels:null));
+            // Reconstruction complète à chaque sauvegarde : élimine les IDs hors-ordre, les formules
+            // calculées et toute corruption accumulée. Plus fiable que le patch partiel (updateTableXml).
+            const fixedTxml=rebuildTableXml(txml,idxToCol(tdbColKeys.length-1),1+recs.length,tdbColLabels);
+            console.log(`[fix-tables-v9] rebuildTableXml pour ${sheet}`);
+            zipTdb.file(tp,fixedTxml);
           }
         }
         // Supprimer calcChain (Excel le regénère proprement à l'ouverture)
