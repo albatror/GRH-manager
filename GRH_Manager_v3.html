@@ -1841,21 +1841,36 @@ async function getSheetTablePaths(zip,sheetPath){
   return paths;
 }
 
-// Met à jour UNIQUEMENT l'attribut ref du tableau et de l'autoFilter.
-// NE MODIFIE PAS les définitions de colonnes pour préserver les colonnes avec calculatedColumnFormula.
-function updateTableXml(tableXml,lastCol,lastRow){
-  // Trouver le ref original du tableau (dans l'attribut du tag <table> lui-même)
-  const tableRefMatch=tableXml.match(/<table[^>]+ref="([A-Z]+\d+):([A-Z]+)\d+"/);
-  const startCell=tableRefMatch?tableRefMatch[1]:'A1';
-  const refVal=`${startCell}:${lastCol}${Math.max(lastRow,1)}`;
-
-  // Ne modifier que les attributs ref sur <table> et <autoFilter>
-  // Ne pas toucher aux ref à l'intérieur de calculatedColumnFormula
-  const result=tableXml
-    .replace(/(<table[^>]*)\bref="[A-Z]+\d+:[A-Z]+\d+"/,`$1ref="${refVal}"`)
-    .replace(/(<autoFilter[^>]*)\bref="[A-Z]+\d+:[A-Z]+\d+"/,`$1ref="${refVal}"`);
-
-  return result;
+// Met à jour le ref ET synchronise count/<tableColumn> pour éviter la corruption Excel.
+function updateTableXml(tableXml,lastCol,lastRow,extraColLabels){
+  const refVal=`A1:${lastCol}${Math.max(lastRow,1)}`;
+  // Remplacer tous les attributs ref (table + autoFilter) en une seule passe globale
+  let r=tableXml.replace(/\bref="[A-Z]+\d+:[A-Z]+\d+"/g,`ref="${refVal}"`);
+  const existingCount=(tableXml.match(/<tableColumn[\s/]/g)||[]).length;
+  // Convertir lastCol lettre → nombre de colonnes
+  let totalCols=0;
+  for(const c of lastCol.toUpperCase()) totalCols=totalCols*26+(c.charCodeAt(0)-64);
+  if(extraColLabels&&extraColLabels.length>0){
+    // Cas : nouvelles colonnes à ajouter (IMPORTANCE ou colonne custom)
+    const newTotal=existingCount+extraColLabels.length;
+    r=r.replace(/(<tableColumns\b[^>]*\bcount=)"(\d+)"/,`$1"${newTotal}"`);
+    const newCols=extraColLabels.map((lbl,i)=>`<tableColumn id="${existingCount+i+1}" name="${xmlEsc(lbl)}"/>`).join('');
+    r=r.replace('</tableColumns>',newCols+'</tableColumns>');
+  } else if(totalCols!==existingCount){
+    if(totalCols>existingCount){
+      // Ajouter les définitions de colonnes manquantes
+      const newCols=[];
+      for(let i=existingCount;i<totalCols;i++) newCols.push(`<tableColumn id="${i+1}" name="Column${i+1}"/>`);
+      r=r.replace(/(<tableColumns\b[^>]*\bcount=)"(\d+)"/,`$1"${totalCols}"`);
+      r=r.replace('</tableColumns>',newCols.join('')+'</tableColumns>');
+    } else {
+      // Supprimer les colonnes auto-fermantes en surplus (les colonnes avec enfants sont préservées)
+      let kept=0;
+      r=r.replace(/<tableColumn[\s/][^>]*\/>/g,m=>{ kept++; return kept<=totalCols?m:''; });
+      r=r.replace(/(<tableColumns\b[^>]*\bcount=)"(\d+)"/,`$1"${totalCols}"`);
+    }
+  }
+  return r;
 }
 
 // ─── SAUVEGARDE PRINCIPALE ────────────────────────────────
@@ -1889,7 +1904,7 @@ async function saveAllFiles(){
             const txml=await zipPaye.files[tp].async('text');
             const tblColCount=(txml.match(/<tableColumn[\s/]/g)||[]).length;
             const extraLabels=payeColLabels.slice(tblColCount);
-            zipPaye.file(tp,updateTableXml(txml,idxToCol(payeColKeys.length-1),1+recs.length));
+            zipPaye.file(tp,updateTableXml(txml,idxToCol(payeColKeys.length-1),1+recs.length,extraLabels.length?extraLabels:null));
           }
         }
         // N+1 (en-têtes ligne 1, lignes 2-3 vides pour style, données à partir de la ligne 4)
@@ -1906,7 +1921,7 @@ async function saveAllFiles(){
             const txml=await zipPaye.files[tp].async('text');
             const tblColCount=(txml.match(/<tableColumn[\s/]/g)||[]).length;
             const extraLabels=n1ColLabels.slice(tblColCount);
-            zipPaye.file(tp,updateTableXml(txml,idxToCol(n1ColKeys.length-1),3+n1Recs.length));
+            zipPaye.file(tp,updateTableXml(txml,idxToCol(n1ColKeys.length-1),3+n1Recs.length,extraLabels.length?extraLabels:null));
           }
         }
         // Supprimer calcChain (Excel le regénère proprement à l'ouverture)
@@ -1945,7 +1960,7 @@ async function saveAllFiles(){
             const txml=await zipTdb.files[tp].async('text');
             const tblColCount=(txml.match(/<tableColumn[\s/]/g)||[]).length;
             const extraLabels=tdbColLabels.slice(tblColCount);
-            zipTdb.file(tp,updateTableXml(txml,idxToCol(tdbColKeys.length-1),1+recs.length));
+            zipTdb.file(tp,updateTableXml(txml,idxToCol(tdbColKeys.length-1),1+recs.length,extraLabels.length?extraLabels:null));
           }
         }
         // Supprimer calcChain (Excel le regénère proprement à l'ouverture)
