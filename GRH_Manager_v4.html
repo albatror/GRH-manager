@@ -218,47 +218,80 @@ async function pickFiles() {
 
 async function processFile(buf, name, handle) {
   try {
-    const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+    const wb = XLSX.read(buf, { type: 'array', cellDates: true, cellFormula: true });
     const zip = await JSZip.loadAsync(buf);
     FILES[name] = { zip, wb, handle, lastModified: Date.now() };
     DB[name] = {}; SCHEMAS[name] = {};
 
-    wb.SheetNames.forEach(sn => {
-      if (sn.toLowerCase().includes('param')) return;
+    const nameToPath = await getSheetPathMap(zip);
+
+    for (const sn of wb.SheetNames) {
+      if (sn.toLowerCase().includes('param')) continue;
       const ws = wb.Sheets[sn];
-      const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, cellDates: true });
-      if (raw.length === 0) return;
+      const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', cellDates: true });
+      if (raw.length === 0) continue;
 
       let hIdx = 0;
       for (let i = 0; i < Math.min(raw.length, 10); i++) { if (raw[i] && raw[i].some(c => c !== '')) { hIdx = i; break; } }
 
       const headerRow = raw[hIdx];
       const colMap = {};
-      headerRow.forEach((h, i) => { if (h) colMap[i] = String(h).trim(); });
+      const headerMeta = {};
+
+      const path = nameToPath[sn];
+      const wsDoc = path ? await getXmlDom(zip, path) : null;
+      const xmlCellStyles = {};
+      if (wsDoc) {
+        const rows = wsDoc.getElementsByTagName('row');
+        for (let i=0; i<rows.length; i++) {
+          const cells = rows[i].getElementsByTagName('c');
+          for (let j=0; j<cells.length; j++) {
+            xmlCellStyles[cells[j].getAttribute('r')] = cells[j].getAttribute('s');
+          }
+        }
+      }
+
+      headerRow.forEach((h, i) => {
+        if (h) {
+          const key = String(h).trim();
+          colMap[i] = key;
+          const addr = XLSX.utils.encode_cell({ r: hIdx, c: i });
+          headerMeta[key] = { s: xmlCellStyles[addr] };
+        }
+      });
 
       const fields = Object.values(colMap).map(k => ({ key: k, label: k, type: isDateCol(k) ? 'date' : 'text' }));
-      SCHEMAS[name][sn] = { title: sn, fields, cols: Object.values(colMap).slice(0, 10), headerIdx: hIdx, colMap };
+      SCHEMAS[name][sn] = { title: sn, fields, cols: Object.values(colMap).slice(0, 10), headerIdx: hIdx, colMap, headerMeta };
 
       const records = [];
       for (let i = hIdx + 1; i < raw.length; i++) {
         const row = raw[i];
         if (!row || row.every(c => c === '')) continue;
-        const obj = { id: nextId++ };
+        const obj = { id: nextId++, __meta: {} };
         Object.entries(colMap).forEach(([idx, key]) => {
-          let v = row[idx];
-          if (v instanceof Date) obj[key] = excelDateToISO(v);
-          else obj[key] = (v === null || v === undefined) ? '' : String(v).trim();
+          const cIdx = parseInt(idx);
+          const addr = XLSX.utils.encode_cell({ r: i, c: cIdx });
+          const cell = ws[addr];
+          obj.__meta[key] = { s: xmlCellStyles[addr], f: cell ? cell.f : null };
+
+          if (cell && cell.f) {
+            obj[key] = '=' + cell.f;
+          } else {
+            let v = raw[i][cIdx];
+            if (v instanceof Date) obj[key] = excelDateToISO(v);
+            else obj[key] = (v === null || v === undefined) ? '' : String(v).trim();
+          }
         });
         records.push(obj);
       }
-      if (records.length > 0) DB[name][sn] = records;
-    });
+      DB[name][sn] = records;
+    }
 
     updateDynamicNav();
     notify(`✓ ${name} chargé`);
     renderView();
     document.getElementById('save-all-btn').disabled = false;
-  } catch (e) { console.error(e); notify(`⚠ Erreur ${name}`); }
+  } catch (e) { console.error(e); notify(`⚠ Erreur ${name}: ${e.message}`); }
 }
 
 function isDateCol(k) {
@@ -279,6 +312,8 @@ function updateDynamicNav() {
     group.className = 'nav-group';
     group.innerHTML = `<div class="nav-group-label">${f}</div>`;
     Object.keys(DB[f]).forEach(sn => {
+      const schema = SCHEMAS[f][sn];
+      if (schema.hidden) return;
       const item = document.createElement('div');
       item.className = 'nav-item';
       const vid = `view|${f}|${sn}`;
@@ -288,7 +323,7 @@ function updateDynamicNav() {
       if (currentView === vid) item.classList.add('active');
       group.appendChild(item);
     });
-    container.appendChild(group);
+    if (group.children.length > 1) container.appendChild(group);
   });
 }
 
@@ -324,6 +359,46 @@ function renderView() {
   }
 }
 
+function collectAllAlertsV4() {
+  const alerts = [];
+  const today = new Date();
+  const horizon = 60; // 2 mois pour les alertes de début/fin
+
+  const diff = d => {
+    if (!d) return null;
+    const x = new Date(d);
+    return isNaN(x) ? null : Math.round((x - today) / 86400000);
+  };
+
+  Object.keys(DB).forEach(f => {
+    Object.keys(DB[f]).forEach(sn => {
+      const data = DB[f][sn];
+      const schema = SCHEMAS[f][sn];
+      const dateFields = schema.fields.filter(fi => fi.type === 'date');
+
+      data.forEach(row => {
+        dateFields.forEach(df => {
+          const d = diff(row[df.key]);
+          if (d !== null && d >= -10 && d < horizon) {
+            const isStart = df.label.toLowerCase().includes('debut') || df.label.toLowerCase().includes('entree') || df.label.toLowerCase().includes('nomination');
+            alerts.push({
+              f, sn,
+              id: row.id,
+              name: row.Nom || row.NOM || row.matricule || 'Sans nom',
+              label: df.label,
+              date: row[df.key],
+              diff: d,
+              isStart,
+              urgency: d < 0 ? 'past' : d < 7 ? 'immediate' : d < 30 ? 'warning' : 'info'
+            });
+          }
+        });
+      });
+    });
+  });
+  return alerts.sort((a, b) => a.diff - b.diff);
+}
+
 function renderDashboardV4() {
   const files = Object.keys(DB);
   if (!files.length) return `<div class="empty-state"><div class="es-icon">📂</div><h2>Aucun fichier</h2><p>Chargez des fichiers Excel pour commencer.</p></div>`;
@@ -331,15 +406,54 @@ function renderDashboardV4() {
   let totalRows = 0, totalSheets = 0;
   files.forEach(f => Object.keys(DB[f]).forEach(sn => { totalRows += DB[f][sn].length; totalSheets++; }));
 
+  const alerts = collectAllAlertsV4();
+
   return `<div id="dashboard">
     <div class="kpi-grid">
       <div class="kpi-card blue"><div class="kpi-label">Fichiers</div><div class="kpi-value">${files.length}</div></div>
       <div class="kpi-card green"><div class="kpi-label">Onglets</div><div class="kpi-value">${totalSheets}</div></div>
       <div class="kpi-card purple"><div class="kpi-label">Entrées</div><div class="kpi-value">${totalRows}</div></div>
+      <div class="kpi-card orange"><div class="kpi-label">Alertes</div><div class="kpi-value">${alerts.length}</div></div>
     </div>
-    <div class="dash-card">
-      <div class="dash-card-title">Fichiers chargés</div>
-      ${files.map(f => `<div style="padding:10px; border-bottom:1px solid var(--border)"><strong>${f}</strong><div style="font-size:11px;color:var(--text-muted)">${Object.keys(DB[f]).length} onglets</div></div>`).join('')}
+
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px">
+      <div class="dash-card">
+        <div class="dash-card-title">🚀 Prochains évènements (Débuts)</div>
+        <div style="display:flex; flex-direction:column; gap:8px">
+          ${alerts.filter(a => a.isStart).slice(0, 10).map(a => `
+            <div style="display:flex; align-items:center; padding:8px; background:var(--surface2); border-radius:5px; gap:10px; cursor:pointer" onclick="setView('view|${a.f}|${a.sn}')">
+              <div style="width:4px; height:25px; background:var(--green); border-radius:2px"></div>
+              <div style="flex:1">
+                <div style="font-size:12px; font-weight:600">${a.name}</div>
+                <div style="font-size:10px; color:var(--text-muted)">${a.label} - ${a.sn}</div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-size:11px; font-family:var(--mono)">${a.date}</div>
+                <div style="font-size:10px; color:${a.diff < 0 ? 'var(--red)' : 'var(--green)'}">${a.diff === 0 ? 'Aujourd\'hui' : a.diff < 0 ? 'Passé' : 'J-'+a.diff}</div>
+              </div>
+            </div>
+          `).join('') || '<p style="font-size:12px; color:var(--text-dim)">Aucun début d\'évènement proche</p>'}
+        </div>
+      </div>
+
+      <div class="dash-card">
+        <div class="dash-card-title">🏁 Prochaines échéances (Fins)</div>
+        <div style="display:flex; flex-direction:column; gap:8px">
+          ${alerts.filter(a => !a.isStart).slice(0, 10).map(a => `
+            <div style="display:flex; align-items:center; padding:8px; background:var(--surface2); border-radius:5px; gap:10px; cursor:pointer" onclick="setView('view|${a.f}|${a.sn}')">
+              <div style="width:4px; height:25px; background:var(--orange); border-radius:2px"></div>
+              <div style="flex:1">
+                <div style="font-size:12px; font-weight:600">${a.name}</div>
+                <div style="font-size:10px; color:var(--text-muted)">${a.label} - ${a.sn}</div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-size:11px; font-family:var(--mono)">${a.date}</div>
+                <div style="font-size:10px; color:${a.diff < 0 ? 'var(--red)' : 'var(--orange)'}">${a.diff === 0 ? 'Aujourd\'hui' : a.diff < 0 ? 'Passé' : 'J-'+a.diff}</div>
+              </div>
+            </div>
+          `).join('') || '<p style="font-size:12px; color:var(--text-dim)">Aucune échéance proche</p>'}
+        </div>
+      </div>
     </div>
   </div>`;
 }
@@ -518,8 +632,14 @@ function saveModal() {
   const [, f, sn] = currentView.split('|');
   const data = DB[f][sn], schema = SCHEMAS[f][sn];
 
-  const obj = editingId ? data.find(r => r.id === editingId) : { id: nextId++ };
-  schema.fields.forEach(fi => { obj[fi.key] = document.getElementById(`edit|${fi.key}`).value; });
+  const obj = editingId ? data.find(r => r.id === editingId) : { id: nextId++, __meta: {} };
+  schema.fields.forEach(fi => {
+    const val = document.getElementById(`edit|${fi.key}`).value;
+    obj[fi.key] = val;
+    // Si c'est un nouveau champ pour cet objet, s'assurer que __meta existe
+    if (!obj.__meta) obj.__meta = {};
+    if (!obj.__meta[fi.key]) obj.__meta[fi.key] = { s: "0" };
+  });
 
   if (!editingId) data.push(obj);
 
@@ -535,62 +655,164 @@ async function saveAllFiles() {
   const btn = document.getElementById('save-all-btn');
   btn.disabled = true; btn.textContent = 'Enregistrement...';
 
-  for (const f of dirtyFiles) {
-    const file = FILES[f];
-    const ssXml = await file.zip.files['xl/sharedStrings.xml'].async('text');
-    const strings = parseSharedStrings(ssXml);
-    const nameToPath = await getSheetPathMap(file.zip);
+  try {
+    for (const f of dirtyFiles) {
+      const file = FILES[f];
+      const zip = file.zip;
 
-    for (const sn of Object.keys(DB[f])) {
-      const path = nameToPath[sn];
-      if (!path) continue;
-      const xml = await file.zip.files[path].async('text');
-      const schema = SCHEMAS[f][sn];
-      const colKeys = schema.fields.map(fi => fi.key);
-      const newXml = rewriteSheetXml(xml, DB[f][sn], colKeys, schema.headerIdx + 2, strings, colKeys, new Set());
-      file.zip.file(path, newXml);
+      let ssDoc = await getXmlDom(zip, 'xl/sharedStrings.xml');
+      if (!ssDoc) ssDoc = new DOMParser().parseFromString('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="0" uniqueCount="0"></sst>', 'application/xml');
+      const sst = ssDoc.documentElement;
+
+      function getOrCreateSst(val) {
+        const sVal = String(val);
+        const siTags = sst.getElementsByTagName('si');
+        for(let i=0; i<siTags.length; i++) {
+          const t = siTags[i].getElementsByTagName('t')[0];
+          if (t && t.textContent === sVal) return i;
+        }
+        const newSi = ssDoc.createElementNS(sst.namespaceURI, 'si');
+        const newT = ssDoc.createElementNS(sst.namespaceURI, 't');
+        newT.textContent = sVal;
+        newSi.appendChild(newT);
+        sst.appendChild(newSi);
+        return siTags.length - 1;
+      }
+
+      const wbDoc = await getXmlDom(zip, 'xl/workbook.xml');
+      const relsDoc = await getXmlDom(zip, 'xl/_rels/workbook.xml.rels');
+      const ctDoc = await getXmlDom(zip, '[Content_Types].xml');
+
+      const sheetsNode = wbDoc.getElementsByTagName('sheets')[0];
+      const currentSheetsInWb = Array.from(sheetsNode.getElementsByTagName('sheet'));
+      const dbSheets = Object.keys(DB[f]);
+
+      currentSheetsInWb.forEach(sNode => {
+        if (!dbSheets.includes(sNode.getAttribute('name'))) {
+          const rId = sNode.getAttribute('r:id');
+          sheetsNode.removeChild(sNode);
+          // Nettoyer les relations
+          const relNode = Array.from(relsDoc.getElementsByTagName('Relationship')).find(r => r.getAttribute('Id') === rId);
+          if (relNode) {
+            const target = relNode.getAttribute('Target');
+            relsDoc.documentElement.removeChild(relNode);
+            // Optionnel : supprimer le fichier du zip
+            const fullPath = target.startsWith('worksheets/') ? 'xl/' + target : target;
+            zip.remove(fullPath);
+            // Nettoyer [Content_Types].xml
+            const partName = (fullPath.startsWith('/') ? '' : '/') + fullPath;
+            const ctOverride = Array.from(ctDoc.getElementsByTagName('Override')).find(o => o.getAttribute('PartName') === partName);
+            if (ctOverride) ctDoc.documentElement.removeChild(ctOverride);
+          }
+        }
+      });
+
+      for (const sn of dbSheets) {
+        const schema = SCHEMAS[f][sn];
+        let sNode = currentSheetsInWb.find(n => n.getAttribute('name') === sn);
+        let path;
+
+        if (!sNode) {
+          const sheetId = Math.max(0, ...Array.from(wbDoc.getElementsByTagName('sheet')).map(n => parseInt(n.getAttribute('sheetId') || 0))) + 1;
+          const rId = "rId" + (Math.max(0, ...Array.from(relsDoc.getElementsByTagName('Relationship')).map(n => {
+            const id = n.getAttribute('Id');
+            return (id && id.startsWith('rId')) ? parseInt(id.replace('rId', '')) : 0;
+          })) + 1);
+
+          sNode = wbDoc.createElementNS(sheetsNode.namespaceURI, 'sheet');
+          sNode.setAttribute('name', sn); sNode.setAttribute('sheetId', sheetId); sNode.setAttribute('r:id', rId);
+          sheetsNode.appendChild(sNode);
+
+          path = `xl/worksheets/sheet${sheetId}.xml`;
+          const rel = relsDoc.createElementNS(relsDoc.documentElement.namespaceURI, 'Relationship');
+          rel.setAttribute('Id', rId); rel.setAttribute('Type', "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"); rel.setAttribute('Target', `worksheets/sheet${sheetId}.xml`);
+          relsDoc.documentElement.appendChild(rel);
+
+          const partName = `/${path}`;
+          let override = Array.from(ctDoc.getElementsByTagName('Override')).find(o => o.getAttribute('PartName') === partName);
+          if (!override) {
+            override = ctDoc.createElementNS(ctDoc.documentElement.namespaceURI, 'Override');
+            override.setAttribute('PartName', partName); override.setAttribute('ContentType', "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml");
+            ctDoc.documentElement.appendChild(override);
+          }
+
+          zip.file(path, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetData/></worksheet>`);
+        } else {
+          const rId = sNode.getAttribute('r:id');
+          const relNode = Array.from(relsDoc.getElementsByTagName('Relationship')).find(r => r.getAttribute('Id') === rId);
+          path = 'xl/' + relNode.getAttribute('Target');
+        }
+
+        if (schema.hidden) sNode.setAttribute('state', 'hidden'); else sNode.removeAttribute('state');
+        const wsDoc = await getXmlDom(zip, path);
+        updateWorksheetDom(wsDoc, DB[f][sn], schema, getOrCreateSst);
+        zip.file(path, new XMLSerializer().serializeToString(wsDoc));
+      }
+
+      zip.file('xl/workbook.xml', new XMLSerializer().serializeToString(wbDoc));
+      zip.file('xl/_rels/workbook.xml.rels', new XMLSerializer().serializeToString(relsDoc));
+      zip.file('[Content_Types].xml', new XMLSerializer().serializeToString(ctDoc));
+      zip.file('xl/sharedStrings.xml', new XMLSerializer().serializeToString(ssDoc));
+
+      const buf = await zip.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' });
+      await writeFileV4(buf, file.handle, f);
     }
-    file.zip.file('xl/sharedStrings.xml', buildSSXml(strings));
-    const buf = await file.zip.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' });
-    await writeFileV4(buf, file.handle, f);
+    dirtyFiles.clear(); document.getElementById('dirty-indicator').style.display = 'none';
+    notify('✓ Sauvegarde réussie');
+  } catch (err) { console.error(err); notify('⚠ Erreur: ' + err.message); }
+  finally { btn.disabled = false; btn.textContent = '💾 Enregistrer tout'; }
+}
+
+async function getXmlDom(zip, path) {
+  const file = zip.file(path); if (!file) return null;
+  return new DOMParser().parseFromString(await file.async('text'), 'application/xml');
+}
+
+function updateWorksheetDom(doc, records, schema, getOrCreateSst) {
+  const ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+  let sheetData = doc.getElementsByTagName('sheetData')[0];
+  if (!sheetData) { sheetData = doc.createElementNS(ns, 'sheetData'); doc.documentElement.appendChild(sheetData); }
+  while (sheetData.firstChild) sheetData.removeChild(sheetData.firstChild);
+
+  let colsNode = doc.getElementsByTagName('cols')[0];
+  if (colsNode) colsNode.parentNode.removeChild(colsNode);
+  colsNode = doc.createElementNS(ns, 'cols');
+  schema.fields.forEach((fi, i) => {
+    const col = doc.createElementNS(ns, 'col'); col.setAttribute('min', i + 1); col.setAttribute('max', i + 1); col.setAttribute('width', '15');
+    if (schema.cols && !schema.cols.includes(fi.key)) col.setAttribute('hidden', '1');
+    colsNode.appendChild(col);
+  });
+  // Insérer cols avant sheetData s'il y a des colonnes
+  if (schema.fields.length > 0) {
+    doc.documentElement.insertBefore(colsNode, sheetData);
   }
 
-  dirtyFiles.clear();
-  document.getElementById('dirty-indicator').style.display = 'none';
-  btn.disabled = false; btn.textContent = '💾 Enregistrer tout';
-  notify('✓ Fichiers sauvegardés');
+  const hRow = doc.createElementNS(ns, 'row'); const hIdx = (schema.headerIdx || 0) + 1; hRow.setAttribute('r', hIdx);
+  schema.fields.forEach((fi, ci) => {
+    const cell = doc.createElementNS(ns, 'c'); cell.setAttribute('r', idxToCol(ci) + hIdx); cell.setAttribute('t', 's');
+    if (schema.headerMeta && schema.headerMeta[fi.key]?.s) cell.setAttribute('s', schema.headerMeta[fi.key].s);
+    const v = doc.createElementNS(ns, 'v'); v.textContent = getOrCreateSst(fi.key); cell.appendChild(v); hRow.appendChild(cell);
+  });
+  sheetData.appendChild(hRow);
+
+  records.forEach((rec, ri) => {
+    const row = doc.createElementNS(ns, 'row'); const rIdx = hIdx + 1 + ri; row.setAttribute('r', rIdx);
+    schema.fields.forEach((fi, ci) => {
+      const cell = doc.createElementNS(ns, 'c'); cell.setAttribute('r', idxToCol(ci) + rIdx);
+      if (rec.__meta?.[fi.key]?.s) cell.setAttribute('s', rec.__meta[fi.key].s);
+      const val = rec[fi.key];
+      if (val && String(val).startsWith('=') && !String(val).startsWith('==')) {
+        const f = doc.createElementNS(ns, 'f'); f.textContent = String(val).substring(1); cell.appendChild(f);
+      } else if (val !== undefined && val !== null && val !== '') {
+        cell.setAttribute('t', 's'); const v = doc.createElementNS(ns, 'v'); v.textContent = getOrCreateSst(val); cell.appendChild(v);
+      }
+      row.appendChild(cell);
+    });
+    sheetData.appendChild(row);
+  });
 }
 
-// ── RE-USE XML LOGIC FROM V3 (simplified/essential) ──
-function parseSharedStrings(xml) {
-  const strings = [];
-  const re = /<t(?:[^>]*)>([\s\S]*?)<\/t>/g;
-  let m; while ((m = re.exec(xml)) !== null) { strings.push(m[1].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')); }
-  return strings;
-}
-function buildSSXml(strings) {
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${strings.length}" uniqueCount="${strings.length}">${strings.map(s => `<si><t>${xmlEsc(s)}</t></si>`).join('')}</sst>`;
-}
-function xmlEsc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 function idxToCol(n) { let s = ''; n++; while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); } return s; }
-
-function rewriteSheetXml(sheetXml, records, colKeys, dataStartRow, strings, colLabels, numericKeys) {
-  const nCols = colKeys.length;
-  const newRowsXml = records.map((rec, ri) => {
-    const rowNum = dataStartRow + ri;
-    const cells = colKeys.map((key, ci) => {
-      const ref = idxToCol(ci) + rowNum;
-      const val = rec[key];
-      if (!val) return `<c r="${ref}" s="0"/>`;
-      const sIdx = strings.indexOf(String(val));
-      const finalIdx = sIdx >= 0 ? sIdx : (strings.push(String(val)) - 1);
-      return `<c r="${ref}" s="0" t="s"><v>${finalIdx}</v></c>`;
-    }).join('');
-    return `<row r="${rowNum}" spans="1:${nCols}">${cells}</row>`;
-  }).join('');
-  const cleaned = sheetXml.replace(/<row r="(\d+)"[^>]*(?:\/>|>[\s\S]*?<\/row>)/g, (match, r) => parseInt(r) >= dataStartRow ? '' : match);
-  return cleaned.replace('</sheetData>', newRowsXml + '</sheetData>');
-}
 
 async function getSheetPathMap(zip) {
   const wbXml = await zip.files['xl/workbook.xml'].async('text');
@@ -621,20 +843,29 @@ function renderAdminV4() {
   const files = Object.keys(DB);
   return `<div style="padding:20px">
     <div class="admin-section">
-      <div class="admin-section-title">Gestion des fichiers et colonnes</div>
+      <div class="admin-section-title">Gestion des fichiers, onglets et colonnes</div>
       ${files.length === 0 ? '<p>Aucun fichier chargé.</p>' : files.map(f => `
         <div style="margin-bottom:20px; padding:15px; background:var(--surface2); border-radius:var(--r)">
-          <div style="display:flex; align-items:center; margin-bottom:15px">
+          <div style="display:flex; align-items:center; margin-bottom:15px; gap:10px">
             <h3 style="flex:1">${f}</h3>
+            <button class="btn btn-primary" onclick="addSheetV4('${f}')">+ Ajouter Onglet</button>
             <button class="btn btn-danger" onclick="removeFileV4('${f}')">Retirer le fichier</button>
           </div>
           <div style="display:flex; flex-direction:column; gap:10px">
             ${Object.keys(DB[f]).map(sn => {
               const schema = SCHEMAS[f][sn];
-              return `<details style="background:var(--surface); border-radius:5px; border:1px solid var(--border)">
-                <summary style="padding:10px; cursor:pointer; font-weight:600">${sn} (${schema.fields.length} colonnes)</summary>
+              const isHidden = schema.hidden;
+              return `<details style="background:var(--surface); border-radius:5px; border:1px solid var(--border); ${isHidden ? 'opacity:0.6' : ''}">
+                <summary style="padding:10px; cursor:pointer; font-weight:600; display:flex; align-items:center; gap:10px">
+                  <span style="flex:1">${sn} (${schema.fields.length} colonnes) ${isHidden ? '👁️‍🗨️ Masqué' : ''}</span>
+                  <button class="btn btn-ghost" style="padding:2px 8px; font-size:11px" onclick="event.preventDefault();toggleSheetVisibilityV4('${f}','${sn}')">${isHidden ? 'Afficher' : 'Masquer'}</button>
+                  <button class="btn btn-danger" style="padding:2px 8px; font-size:11px" onclick="event.preventDefault();deleteSheetV4('${f}','${sn}')">Supprimer</button>
+                </summary>
                 <div style="padding:15px">
-                  <div style="font-size:11px; font-weight:700; color:var(--text-muted); margin-bottom:10px; text-transform:uppercase">Colonnes affichées (max 10 préconisé)</div>
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
+                    <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase">Gestion des colonnes</div>
+                    <button class="btn btn-purple" style="font-size:11px; padding:4px 10px" onclick="addColumnV4('${f}','${sn}')">+ Ajouter Colonne</button>
+                  </div>
                   <div style="display:flex; flex-direction:column; gap:5px">
                     ${schema.fields.map((fi, idx) => `
                       <div style="display:flex; align-items:center; gap:10px; padding:5px; background:var(--surface2); border-radius:4px">
@@ -645,6 +876,7 @@ function renderAdminV4() {
                         <div style="display:flex; gap:2px">
                           <button class="btn btn-ghost" style="padding:2px 5px; font-size:10px" onclick="moveColV4('${f}','${sn}',${idx},-1)">▲</button>
                           <button class="btn btn-ghost" style="padding:2px 5px; font-size:10px" onclick="moveColV4('${f}','${sn}',${idx},1)">▼</button>
+                          <button class="btn btn-danger" style="padding:2px 5px; font-size:10px; margin-left:5px" onclick="deleteColV4('${f}','${sn}','${fi.key}')">🗑</button>
                         </div>
                       </div>
                     `).join('')}
@@ -675,6 +907,7 @@ function toggleColV4(f, sn, key) {
     schema.cols.push(key);
   }
   saveAdminConfig();
+  markDirty(f);
   if (currentView === `view|${f}|${sn}`) renderView();
 }
 
@@ -685,6 +918,7 @@ function moveColV4(f, sn, idx, dir) {
   const temp = schema.fields[idx];
   schema.fields[idx] = schema.fields[target];
   schema.fields[target] = temp;
+  markDirty(f);
   renderView();
 }
 
@@ -699,6 +933,71 @@ function removeFileV4(f) {
     delete DB[f]; delete FILES[f]; delete SCHEMAS[f];
     updateDynamicNav(); renderView();
   }
+}
+
+function addSheetV4(f) {
+  const name = prompt("Nom du nouvel onglet :");
+  if (!name) return;
+  if (DB[f][name]) { notify("⚠ Cet onglet existe déjà"); return; }
+  DB[f][name] = [];
+  SCHEMAS[f][name] = { title: name, fields: [{key:'Nom', label:'Nom', type:'text'}], cols: ['Nom'], headerIdx: 0, colMap: {0:'Nom'} };
+  markDirty(f); updateDynamicNav(); renderView();
+}
+
+function deleteSheetV4(f, sn) {
+  if (!confirm(`Supprimer l'onglet ${sn} ?`)) return;
+  delete DB[f][sn];
+  delete SCHEMAS[f][sn];
+  markDirty(f); updateDynamicNav(); renderView();
+}
+
+function toggleSheetVisibilityV4(f, sn) {
+  SCHEMAS[f][sn].hidden = !SCHEMAS[f][sn].hidden;
+  markDirty(f); updateDynamicNav(); renderView();
+}
+
+function addColumnV4(f, sn) {
+  const label = prompt("Nom de la nouvelle colonne :");
+  if (!label) return;
+  const key = label.trim();
+  const schema = SCHEMAS[f][sn];
+  if (schema.fields.some(fi => fi.key === key)) { notify("⚠ Cette colonne existe déjà"); return; }
+
+  const type = isDateCol(key) ? 'date' : 'text';
+  schema.fields.push({ key, label: key, type });
+  schema.cols.push(key);
+
+  // Initialiser la métadonnée pour les enregistrements existants
+  DB[f][sn].forEach(r => {
+    if (!r.__meta) r.__meta = {};
+    r.__meta[key] = { s: "0" };
+  });
+
+  // Mettre à jour colMap
+  const nextIdx = Math.max(...Object.keys(schema.colMap).map(Number)) + 1;
+  schema.colMap[nextIdx] = key;
+
+  markDirty(f); renderView();
+}
+
+function deleteColV4(f, sn, key) {
+  if (!confirm(`Supprimer la colonne ${key} ?`)) return;
+  const schema = SCHEMAS[f][sn];
+  schema.fields = schema.fields.filter(fi => fi.key !== key);
+  schema.cols = schema.cols.filter(c => c !== key);
+
+  // Mettre à jour colMap
+  Object.keys(schema.colMap).forEach(idx => {
+    if (schema.colMap[idx] === key) delete schema.colMap[idx];
+  });
+
+  // Nettoyer les données
+  DB[f][sn].forEach(r => {
+    delete r[key];
+    if (r.__meta) delete r.__meta[key];
+  });
+
+  markDirty(f); renderView();
 }
 
 function exportCSV() {
