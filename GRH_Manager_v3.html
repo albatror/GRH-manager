@@ -418,6 +418,8 @@ function defaultAdminConfig() {
     },
     // Templates sauvegardés
     templates: [],
+    // Onglets masqués de la navigation (liste de viewId)
+    hiddenTabs: [],
     // Paramètres généraux
     settings: {
       alertHorizon: 180,
@@ -426,6 +428,12 @@ function defaultAdminConfig() {
       autoSave: {
         enabled: false,
         intervalMinutes: 5
+      },
+      alertsUntreated: {
+        enabled: true,
+        horizonDays: 30,
+        checkCols: ['saisie','acte','pref'],
+        sources: ['cdd','cdi','cnp','mater','stagiaires','indispo','at']
       }
     }
   };
@@ -445,6 +453,9 @@ let ADMIN = loadAdminConfig();
     if(!exists) ADMIN.dashConfig.widgets.push({...dw});
     else if(dw.id==='recentPaye'&&exists.visibleCols===undefined) exists.visibleCols=dw.visibleCols;
   });
+  if(!ADMIN.hiddenTabs) ADMIN.hiddenTabs=[];
+  if(!ADMIN.settings) ADMIN.settings=def.settings;
+  if(!ADMIN.settings.alertsUntreated) ADMIN.settings.alertsUntreated=def.settings.alertsUntreated;
 })();
 
 // ═══════════════════════════════════════════════════════════
@@ -1918,6 +1929,42 @@ function updateTableXml(tableXml,lastCol,lastRow,extraColLabels){
   return r;
 }
 
+// ─── MASQUAGE COLONNES DANS LE XML FEUILLE ───────────────
+// visibleSet = Set des clés visibles ; colKeys = clés dans l'ordre d'écriture
+function applyColHidingToSheetXml(sheetXml,colKeys,visibleSet){
+  if(!visibleSet||visibleSet.size===0) return sheetXml;
+  const hiddenNums=[];
+  colKeys.forEach((key,idx)=>{
+    if(!key.startsWith('_empty_col_')&&!visibleSet.has(key)) hiddenNums.push(idx+1);
+  });
+  // Supprimer les marqueurs hidden injectés précédemment (pattern exact) pour idempotence
+  let result=sheetXml.replace(/<col min="(\d+)" max="\1" width="8\.43" hidden="1"\/>/g,'');
+  if(hiddenNums.length===0) return result;
+  const newCols=hiddenNums.map(n=>`<col min="${n}" max="${n}" width="8.43" hidden="1"/>`).join('');
+  if(result.includes('<cols>')){
+    result=result.replace('</cols>',newCols+'</cols>');
+  } else {
+    result=result.replace('<sheetData>',`<cols>${newCols}</cols><sheetData>`);
+  }
+  return result;
+}
+
+// ─── VISIBILITÉ ONGLETS DANS WORKBOOK.XML ─────────────────
+async function applySheetVisibility(zip,tabsToHide,tabsToShow){
+  if(!zip.files['xl/workbook.xml']) return;
+  let wbXml=await zip.files['xl/workbook.xml'].async('text');
+  const esc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  tabsToHide.forEach(name=>{
+    wbXml=wbXml.replace(new RegExp(`(<sheet\\b[^>]*\\bname="${esc(name)}"[^/]*?)(?:\\s+state="[^"]*")?(/>|>)`,'g'),
+      (_,before,end)=>`${before} state="hidden"${end}`);
+  });
+  tabsToShow.forEach(name=>{
+    wbXml=wbXml.replace(new RegExp(`(<sheet\\b[^>]*\\bname="${esc(name)}"[^/]*?)\\s+state="[^"]*"(/>|>)`,'g'),
+      (_,before,end)=>`${before}${end}`);
+  });
+  zip.file('xl/workbook.xml',wbXml);
+}
+
 // ─── SAUVEGARDE PRINCIPALE ────────────────────────────────
 async function saveAllFiles(){
   const btn=document.getElementById('save-all-btn');
@@ -1938,12 +1985,15 @@ async function saveAllFiles(){
         const payeColLabels=getLabelsForColKeys(payeColKeys,'paye_');
         const payeNumKeys=getNumericKeySet('paye_');
         // Réécrire tous les onglets mois
+        const _payeVisSet=ADMIN.visibleCols['paye_']?new Set(ADMIN.visibleCols['paye_']):null;
         for(const month of MONTHS){
           const path=nameToPath[month];
           if(!path||!zipPaye.files[path]) continue;
           const xml=await zipPaye.files[path].async('text');
           const recs=DB['paye_'+month]||[];
-          zipPaye.file(path,rewriteSheetXml(xml,recs,payeColKeys,2,strings,payeColLabels,payeNumKeys));
+          let _sx=rewriteSheetXml(xml,recs,payeColKeys,2,strings,payeColLabels,payeNumKeys);
+          if(_payeVisSet)_sx=applyColHidingToSheetXml(_sx,payeColKeys,_payeVisSet);
+          zipPaye.file(path,_sx);
           for(const tp of await getSheetTablePaths(zipPaye,path)){
             if(!zipPaye.files[tp]) continue;
             const txml=await zipPaye.files[tp].async('text');
@@ -1960,7 +2010,10 @@ async function saveAllFiles(){
           const n1ColLabels=getLabelsForColKeys(n1ColKeys,'paye_N1');
           const n1NumKeys=getNumericKeySet('paye_N1');
           const n1Recs=DB['paye_N1']||[];
-          zipPaye.file(n1path,rewriteSheetXml(xml,n1Recs,n1ColKeys,4,strings,n1ColLabels,n1NumKeys));
+          const _n1vis=ADMIN.visibleCols['paye_N1'];
+          let _n1sx=rewriteSheetXml(xml,n1Recs,n1ColKeys,4,strings,n1ColLabels,n1NumKeys);
+          if(_n1vis)_n1sx=applyColHidingToSheetXml(_n1sx,n1ColKeys,new Set(_n1vis));
+          zipPaye.file(n1path,_n1sx);
           for(const tp of await getSheetTablePaths(zipPaye,n1path)){
             if(!zipPaye.files[tp]) continue;
             const txml=await zipPaye.files[tp].async('text');
@@ -1997,7 +2050,10 @@ async function saveAllFiles(){
           const tdbColLabels=getLabelsForColKeys(tdbColKeys,key);
           const tdbNumKeys=getNumericKeySet(key);
           const recs=DB[key]||[];
-          zipTdb.file(path,rewriteSheetXml(xml,recs,tdbColKeys,2,strings,tdbColLabels,tdbNumKeys));
+          const _tvis=ADMIN.visibleCols[key];
+          let _tsx=rewriteSheetXml(xml,recs,tdbColKeys,2,strings,tdbColLabels,tdbNumKeys);
+          if(_tvis)_tsx=applyColHidingToSheetXml(_tsx,tdbColKeys,new Set(_tvis));
+          zipTdb.file(path,_tsx);
           for(const tp of await getSheetTablePaths(zipTdb,path)){
             if(!zipTdb.files[tp]) continue;
             const txml=await zipTdb.files[tp].async('text');
@@ -2006,6 +2062,14 @@ async function saveAllFiles(){
             zipTdb.file(tp,updateTableXml(txml,idxToCol(tdbColKeys.length-1),1+recs.length,extraLabels.length?extraLabels:null));
           }
         }
+        // Synchroniser la visibilité des onglets (masquer/afficher dans le workbook.xml)
+        {const _ht=ADMIN.hiddenTabs||[];
+        const _hide=[],_show=[];
+        Object.entries(TDB_MAP_BASE).forEach(([k,{sheet}])=>{
+          const vId=_TAB_KEY_VIEW[k];
+          if(vId&&_ht.includes(vId))_hide.push(sheet);else _show.push(sheet);
+        });
+        await applySheetVisibility(zipTdb,_hide,_show);}
         // Supprimer calcChain (Excel le regénère proprement à l'ouverture)
         if(zipTdb.files['xl/calcChain.xml']) zipTdb.remove('xl/calcChain.xml');
         zipTdb.file('xl/sharedStrings.xml', buildSSXml(strings));
@@ -2373,6 +2437,36 @@ function collectAllAlerts(today){
   DB['tdb_cdi'].forEach(r=>{push('CDI','cdi',r.id,r.nom,r.prenom,r.pole,'Échéance 3 ans',r.echeance3ans,diff(r.echeance3ans),r._importance);push('CDI','cdi',r.id,r.nom,r.prenom,r.pole,'Échéance 6 ans',r.echeance6ans,diff(r.echeance6ans),r._importance);});
   DB['tdb_stag_conv'].forEach(r=>push('Stag. conv.','stag-conv',r.id,r.nom,r.prenom,r.pole,'Fin stage',r.dateFinStage,diff(r.dateFinStage),r._importance));
   DB['tdb_comite_med'].forEach(r=>push('Comité méd.','comite-med',r.id,r.nom,r.prenom,'','Fin dossier',r.dateFin,diff(r.dateFin),r._importance));
+
+  // ── ALERTES ÉVÉNEMENTS NON TRAITÉS EN PAYE ──────────────────
+  const au=ADMIN.settings.alertsUntreated||{};
+  if(au.enabled!==false){
+    const auH=au.horizonDays||30;
+    const auCC=au.checkCols||['saisie','acte','pref'];
+    const auSrc=au.sources||['cdd','cdi','cnp','mater','stagiaires','indispo','at'];
+    // Convertit une date ISO en mois de paye (JANV, FEV, …)
+    const d2m=d=>{const x=new Date((d||'')+'T00:00:00');if(isNaN(x.getTime()))return null;return['JANV','FEV','MARS','AVR','MAI','JUIN','JUILL','AOUT','SEPT','OCT','NOV','DEC'][x.getMonth()];};
+    // Vérifie si un agent est traité dans la paye du mois donné (au moins une col checkée à OK)
+    const treated=(mat,mo)=>(DB['paye_'+mo]||[]).some(p=>String(p.matricule||'').trim()===String(mat||'').trim()&&auCC.some(c=>p[c]==='OK'));
+    // Pousse une alerte "non traité" si la date est dans la fenêtre et l'événement non traité
+    const pushU=(src,view,r,lbl,date)=>{
+      const dv=diff(date);
+      if(dv===null||dv>auH||dv<-180)return;
+      const mo=d2m(date);if(!mo)return;
+      if(treated(r.matricule,mo))return;
+      const urg=dv<0?'expired':dv<30?'critical':dv<90?'warning':'soon';
+      alerts.push({source:src,view,id:r.id,nom:r.nom||'',prenom:r.prenom||'',pole:r.pole||'',
+        label:lbl,date,diff:dv,imp:r._importance||'Normal',urgency:urg,untreated:true});
+    };
+    if(auSrc.includes('cdd'))      DB['tdb_cdd'].forEach(r=>pushU('CDD','cdd',r,'Début CDD non traité en paye',r.dateDebut));
+    if(auSrc.includes('cdi'))      DB['tdb_cdi'].forEach(r=>pushU('CDI','cdi',r,'Début CDI non traité en paye',r.dateDebut));
+    if(auSrc.includes('cnp'))      DB['tdb_cnp'].forEach(r=>pushU('CNP','cnp',r,'Début CNP non traité en paye',r.dateDebut));
+    if(auSrc.includes('mater'))    DB['tdb_mater'].forEach(r=>pushU('Maternité','mater',r,'Début maternité non traité en paye',r.dateDebutArret||r.datePrevue));
+    if(auSrc.includes('stagiaires'))DB['tdb_stagiaires'].forEach(r=>pushU('Stagiaires','stagiaires',r,'Début stage non traité en paye',r.debutStage));
+    if(auSrc.includes('indispo'))  DB['tdb_indispo'].forEach(r=>pushU('Indispo phys.','indispo',r,'Début indispo non traité en paye',r.dateDebut));
+    if(auSrc.includes('at'))       DB['tdb_at'].forEach(r=>pushU('AT','at',r,'AT non traité en paye',r.dateAT));
+  }
+
   const ord={expired:0,critical:1,warning:2,soon:3,info:4};
   return alerts.filter(a=>a.diff!==null).sort((a,b)=>ord[a.urgency]-ord[b.urgency]||a.diff-b.diff);
 }
@@ -2541,6 +2635,7 @@ function renderAlertsList(allAlerts,srcTags){
         <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
           <strong style="font-size:12px">${a.nom} ${a.prenom}</strong>
           <span class="chip ${(srcTags||{})[a.source]||'chip-gray'}" style="font-size:9px">${a.source}</span>
+          ${a.untreated?'<span style="font-size:9px;padding:1px 5px;background:var(--orange-soft);color:var(--orange);border-radius:4px;font-weight:700">NON TRAITÉ</span>':''}
           ${impEnabled&&a.imp&&a.imp!=='Normal'?renderImpChip(a.imp):''}
           <span style="font-size:11px;color:var(--text-muted)">${a.label}</span>
         </div>
@@ -2563,7 +2658,7 @@ function renderImpChip(v){
   return`<span class="imp-chip imp-normal">${v}</span>`;
 }
 
-function setAlertFilter(f){alertFilter=f;const today=new Date();const all=getAlerts(today);const st={'Disponibilités':'chip-blue','CDD':'chip-orange','CNP':'chip-orange','Apprentis':'chip-purple','Experts':'chip-blue','Détach. sortants':'chip-blue','Détach. entrants':'chip-blue','Stagiaires':'chip-green','Indispo phys.':'chip-red','Temps partiel':'chip-gray','TPT':'chip-gray','Congé parental':'chip-gray','Cartes séjour':'chip-orange','Maternité':'chip-yellow','AT':'chip-red','CDI':'chip-green','Stag. conv.':'chip-green','Comité méd.':'chip-red'};const el=document.getElementById('alerts-list');if(el)el.innerHTML=renderAlertsList(all,st);}
+function setAlertFilter(f){alertFilter=f;const today=new Date();const all=getAlerts(today);const st={'Disponibilités':'chip-blue','CDD':'chip-orange','CNP':'chip-orange','Apprentis':'chip-purple','Experts':'chip-blue','Détach. sortants':'chip-blue','Détach. entrants':'chip-blue','Stagiaires':'chip-green','Indispo phys.':'chip-red','Temps partiel':'chip-gray','TPT':'chip-gray','Congé parental':'chip-gray','Cartes séjour':'chip-orange','Maternité':'chip-yellow','AT':'chip-red','CDI':'chip-green','Stag. conv.':'chip-green','Comité méd.':'chip-red','CDI':'chip-green'};const el=document.getElementById('alerts-list');if(el)el.innerHTML=renderAlertsList(all,st);}
 function goToRecord(view,id){const nav=document.querySelector(`[data-view="${view}"]`);setView(view,nav);setTimeout(()=>{const r=document.querySelector(`tr[data-id="${id}"]`);if(r){r.scrollIntoView({behavior:'smooth',block:'center'});r.classList.add('selected')}},120);}
 
 // ═══════════════════════════════════════════════════════════
@@ -3059,6 +3154,19 @@ const ALL_TABLES=[
   {key:'tdb_agent60',   label:'Agents > 60 ans', file:'tdb'},
 ];
 
+// Correspondance tableKey → viewId (reverse de viewToTableKey)
+const _TAB_KEY_VIEW={
+  'paye_':'paye','paye_N1':'n1',
+  'tdb_cdd':'cdd','tdb_cdi':'cdi','tdb_cnp':'cnp',
+  'tdb_stagiaires':'stagiaires','tdb_apprentis':'apprentis',
+  'tdb_experts':'experts','tdb_dispo':'dispo',
+  'tdb_detach_sort':'detach-sort','tdb_detach_entr':'detach-entr',
+  'tdb_mater':'mater','tdb_parental':'parental','tdb_indispo':'indispo',
+  'tdb_tpartiel':'tpartiel','tdb_sejour':'sejour','tdb_tpt':'tpt',
+  'tdb_at':'at','tdb_stag_conv':'stag-conv','tdb_comite_med':'comite-med',
+  'tdb_retraite':'retraite','tdb_agent60':'agent60'
+};
+
 function renderAdminColumns(){
   return`<div>
   <div class="admin-section">
@@ -3235,14 +3343,20 @@ function renderAdminTabs(){
     <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
       Ces onglets sont intégrés nativement dans GRH Manager et correspondent exactement à la structure des fichiers modèles. Leurs colonnes sont gérées depuis l'onglet <strong>Colonnes</strong>.
     </p>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px">
       ${ALL_TABLES.map(t=>{
         const rows=(DB[t.key]||[]).length;
-        return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;display:flex;align-items:center;gap:8px">
+        const vId=_TAB_KEY_VIEW[t.key]||t.key;
+        const isHidden=(ADMIN.hiddenTabs||[]).includes(vId);
+        return`<div style="background:var(--surface2);border:1px solid ${isHidden?'var(--border)':'rgba(46,204,122,.2)'};border-radius:var(--r);padding:10px 12px;display:flex;align-items:center;gap:8px">
           <div style="flex:1">
-            <div style="font-size:12px;font-weight:600">${t.label}</div>
-            <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px">${rows} enregistrement${rows!==1?'s':''} · <span class="chip ${t.file==='paye'?'chip-blue':'chip-orange'}" style="font-size:9px">${t.file==='paye'?'Paye':'TDB'}</span></div>
+            <div style="font-size:12px;font-weight:600;color:${isHidden?'var(--text-muted)':'var(--text)'}">${t.label}</div>
+            <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px">${rows} enreg. · <span class="chip ${t.file==='paye'?'chip-blue':'chip-orange'}" style="font-size:9px">${t.file==='paye'?'Paye':'TDB'}</span></div>
           </div>
+          <label title="${isHidden?'Afficher cet onglet':'Masquer cet onglet'}" style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;color:${isHidden?'var(--text-muted)':'var(--green)'}">
+            <input type="checkbox" ${!isHidden?'checked':''} onchange="toggleTabVisible('${vId}',this.checked)" style="accent-color:var(--accent);width:13px;height:13px">
+            ${isHidden?'Masqué':'Visible'}
+          </label>
         </div>`;
       }).join('')}
     </div>
@@ -3277,6 +3391,24 @@ function renderAdminTabs(){
     <button class="btn btn-purple" onclick="createCustomTab()">+ Créer l'onglet</button>
   </div>
 </div>`;
+}
+
+// Masquer / afficher un onglet intégré ou custom dans la navigation + Excel
+function toggleTabVisible(vId,visible){
+  if(!ADMIN.hiddenTabs)ADMIN.hiddenTabs=[];
+  if(!visible){
+    if(!ADMIN.hiddenTabs.includes(vId))ADMIN.hiddenTabs.push(vId);
+    const el=document.querySelector(`[data-view="${vId}"]`);
+    if(el)el.style.display='none';
+    if(currentView===vId)setView('dashboard',null);
+  } else {
+    ADMIN.hiddenTabs=ADMIN.hiddenTabs.filter(t=>t!==vId);
+    const el=document.querySelector(`[data-view="${vId}"]`);
+    if(el)el.style.display='';
+  }
+  saveAdminConfig();
+  notify(visible?`✓ Onglet "${vId}" affiché`:`✓ Onglet "${vId}" masqué (sera caché dans Excel à la prochaine sauvegarde)`);
+  setAdminTab('tabs');
 }
 
 // Promouvoir un onglet dynamique vers le groupe "Tableau de Bord RH"
@@ -3809,6 +3941,52 @@ function renderAdminSettings(){
     </div>
   </div>
   <div class="admin-section">
+    <div class="admin-section-title">🔔 Alertes — Événements non traités en paye</div>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+      Déclenche une alerte sur le dashboard quand un événement (CDD, CDI, CNP, Maternité…) a commencé
+      mais n'a pas encore été saisi/traité dans le Cahier de Paye. Un événement est considéré traité
+      lorsqu'au moins une des colonnes vérifiées est marquée <strong>OK</strong> pour cet agent dans le mois concerné.
+    </p>
+    ${(()=>{
+      const au=s.alertsUntreated||{};
+      const allCols=[{k:'saisie',l:'Saisie'},{k:'acte',l:'Acte'},{k:'pref',l:'PREF'},{k:'gecco',l:'GECCO & PJ'},{k:'paye',l:'Paye'},{k:'bulletinElectro',l:'Bulletin Électro'}];
+      const allSrc=[{k:'cdd',l:'CDD'},{k:'cdi',l:'CDI'},{k:'cnp',l:'CNP'},{k:'mater',l:'Maternité'},{k:'stagiaires',l:'Stagiaires'},{k:'indispo',l:'Indispo. phys.'},{k:'at',l:'Accidents travail'}];
+      const chkC=au.checkCols||['saisie','acte','pref'];
+      const chkS=au.sources||['cdd','cdi','cnp','mater','stagiaires','indispo','at'];
+      return`<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+        <div class="form-group">
+          <label>Activation</label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:4px;padding:7px 9px;background:var(--surface3);border:1px solid var(--border);border-radius:var(--r)">
+            <input type="checkbox" id="set-au-enabled" ${au.enabled!==false?'checked':''} style="accent-color:var(--accent);width:14px;height:14px">
+            <span style="font-size:12px;font-weight:500">${au.enabled!==false?'<span style="color:var(--green)">Activées</span>':'<span style="color:var(--text-muted)">Désactivées</span>'}</span>
+          </label>
+        </div>
+        <div class="form-group">
+          <label>Fenêtre de détection (jours)</label>
+          <input type="number" id="set-au-horizon" value="${au.horizonDays||30}" min="1" max="365">
+          <div style="font-size:10.5px;color:var(--text-muted);margin-top:3px">Alerter si l'événement a débuté dans les X derniers jours ou débute dans les X prochains jours</div>
+        </div>
+      </div>
+      <div style="margin-bottom:12px">
+        <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px">Colonnes paye à vérifier (au moins 1 doit être OK)</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${allCols.map(c=>`<label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:3px 8px;background:var(--surface3);border:1px solid var(--border);border-radius:6px;font-size:11px">
+            <input type="checkbox" data-au-col="${c.k}" ${chkC.includes(c.k)?'checked':''} style="accent-color:var(--accent)"> ${c.l}
+          </label>`).join('')}
+        </div>
+      </div>
+      <div style="margin-bottom:14px">
+        <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px">Types d'événements à surveiller</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${allSrc.map(c=>`<label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:3px 8px;background:var(--surface3);border:1px solid var(--border);border-radius:6px;font-size:11px">
+            <input type="checkbox" data-au-src="${c.k}" ${chkS.includes(c.k)?'checked':''} style="accent-color:var(--orange)"> ${c.l}
+          </label>`).join('')}
+        </div>
+      </div>`;
+    })()}
+    <button class="btn btn-primary" onclick="saveSettings()">✓ Enregistrer</button>
+  </div>
+  <div class="admin-section">
     <div class="admin-section-title">📁 Chemin de sauvegarde</div>
     <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
       Par défaut, les modifications sont enregistrées dans les fichiers sources chargés au départ.
@@ -3892,8 +4070,18 @@ function saveSettings(){
   if(!ADMIN.settings.autoSave) ADMIN.settings.autoSave={};
   ADMIN.settings.autoSave.enabled=asEnabled;
   ADMIN.settings.autoSave.intervalMinutes=asInterval;
+  // Alertes événements non traités
+  const auEnabled=document.getElementById('set-au-enabled')?.checked!==false;
+  const auHorizon=parseInt(document.getElementById('set-au-horizon')?.value)||30;
+  const auCols=[...document.querySelectorAll('[data-au-col]:checked')].map(el=>el.dataset.auCol);
+  const auSrcs=[...document.querySelectorAll('[data-au-src]:checked')].map(el=>el.dataset.auSrc);
+  if(!ADMIN.settings.alertsUntreated) ADMIN.settings.alertsUntreated={};
+  ADMIN.settings.alertsUntreated.enabled=auEnabled;
+  ADMIN.settings.alertsUntreated.horizonDays=auHorizon;
+  if(auCols.length) ADMIN.settings.alertsUntreated.checkCols=auCols;
+  if(auSrcs.length) ADMIN.settings.alertsUntreated.sources=auSrcs;
+  _alertsCache=null; // Invalider le cache pour recalculer
   saveAdminConfig();
-  // Redémarrer le timer de sauvegarde automatique si nécessaire
   if(asEnabled) startAutoSave(); else stopAutoSave();
   notify('✓ Paramètres enregistrés' + (asEnabled ? ` — autosauvegarde toutes les ${asInterval} min` : ''));
 }
@@ -4021,7 +4209,12 @@ function notify(msg){const el=document.getElementById('notify');document.getElem
 updateBadges();
 // 4. Appliquer l'ordre de navigation sauvegardé
 applyNavOrder();
-// 5. Démarrer la sauvegarde automatique si elle était activée
+// 5. Masquer les onglets configurés comme non visibles
+(ADMIN.hiddenTabs||[]).forEach(vId=>{
+  const el=document.querySelector(`[data-view="${vId}"]`);
+  if(el) el.style.display='none';
+});
+// 6. Démarrer la sauvegarde automatique si elle était activée
 startAutoSave();
 tryAutoReload();
 </script>
